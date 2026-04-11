@@ -254,6 +254,23 @@ export default function DashboardPage() {
   const getDisputeForDeal = (dealId: string): Dispute | undefined =>
     disputes.find(d => d.dealId === dealId);
 
+  const combinedActivity = [
+    ...activity,
+    ...deals
+      .filter(d => d.status !== 'completed')
+      .map(deal => ({
+        timestamp: deal.createdAt,
+        type: 'deal' as const,
+        message: `Active Deal: ${deal.id} - ${deal.description || 'No description'}`,
+      })),
+    ...activeDisputes
+      .map(dispute => ({
+        timestamp: dispute.createdAt,
+        type: 'dispute' as const,
+        message: `Active Dispute: ${dispute.id} for Deal ${dispute.dealId}`,
+      }))
+  ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
   return (
     <DashboardLayout>
       {/* Page Header */}
@@ -470,10 +487,10 @@ export default function DashboardPage() {
             <h2 className="font-sans text-sm font-bold text-[#E0E0FF] tracking-wider uppercase">RECENT ACTIVITY</h2>
           </div>
           <div className="p-4 max-h-80 overflow-y-auto space-y-0">
-            {activity.length === 0 && (
+            {combinedActivity.length === 0 && (
               <p className="font-mono text-xs text-[#6060A0] py-8 text-center uppercase tracking-widest">No activity detected</p>
             )}
-            {activity.map((event, i) => (
+            {combinedActivity.map((event, i) => (
               <div key={i} className="flex items-start gap-3 py-3 px-2 border-b border-white/[0.03] last:border-0 group hover:bg-white/[0.01] transition-colors">
                 <span className="font-mono text-[9px] text-[#5A5A7A] whitespace-nowrap mt-1 group-hover:text-brand-teal transition-colors">
                   {formatTime(event.timestamp)}
@@ -481,7 +498,8 @@ export default function DashboardPage() {
                 <span className={`font-mono text-[11px] leading-relaxed tracking-tight ${event.type === 'dispute' ? 'text-brand-pink' :
                     event.type === 'payment' ? 'text-brand-teal' :
                       event.type === 'juror' ? 'text-brand-amber' :
-                        'text-brand-purple-light'
+                        event.type === 'deal' ? 'text-[#E0E0FF]' :
+                          'text-brand-purple-light'
                   }`}>
                   {event.message}
                 </span>
