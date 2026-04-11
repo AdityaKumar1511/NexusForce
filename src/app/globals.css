@@ -1,0 +1,215 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg-primary: #060612;
+  --bg-sidebar: rgba(255, 255, 255, 0.03);
+  --bg-card: rgba(255, 255, 255, 0.04);
+  --border-card: rgba(255, 255, 255, 0.08);
+  --bg-input: rgba(255, 255, 255, 0.05);
+  --border-input: rgba(255, 255, 255, 0.10);
+
+  --brand-purple: #6C63FF;
+  --brand-purple-light: #8B85FF;
+  --brand-purple-dim: rgba(108, 99, 255, 0.15);
+
+  --brand-teal: #00E5C3;
+  --brand-teal-dim: rgba(0, 229, 195, 0.12);
+
+  --brand-pink: #FF6B9D;
+  --brand-pink-dim: rgba(255, 107, 157, 0.12);
+
+  --brand-amber: #F59E0B;
+  --brand-amber-dim: rgba(245, 158, 11, 0.10);
+
+  --success: #10B981;
+  --danger: #EF4444;
+
+  --text-primary: #E0E0FF;
+  --text-secondary: #B0B0E0;
+  --text-muted: #6060A0;
+  --text-faint: #5A5A7A;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--bg-primary);
+}
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Selection color */
+::selection {
+  background: rgba(108, 99, 255, 0.3);
+  color: #ffffff;
+}
+
+/* Glassmorphism Classes */
+.glass {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 14px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-navbar {
+  background: rgba(6, 6, 18, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Shimmer Effect */
+.shimmer-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-hover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.04),
+    transparent
+  );
+  transition: 0.6s;
+}
+
+.shimmer-hover:hover::after {
+  left: 100%;
+}
+
+/* Floating Orb Keyframes */
+@keyframes float {
+  0%, 100% { transform: translate(0, 0); }
+  50%       { transform: translate(25px, 20px); }
+}
+
+.animate-float {
+  animation: float 8s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float 10s ease-in-out infinite reverse;
+}
+
+.animate-float-delayed {
+  animation: float 12s ease-in-out infinite 2s;
+}
+
+/* Pulse Animation */
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50%       { box-shadow: 0 0 0 4px transparent; opacity: 0.7; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s infinite;
+}
+
+/* Layout content wrapper to sit above orbs */
+.content-layer {
+  position: relative;
+  z-index: 1;
+}
+
+/* Navigation items */
+.nav-item-active {
+  position: relative;
+  background: rgba(108, 99, 255, 0.1);
+  color: var(--brand-purple-light);
+}
+
+.nav-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--brand-purple);
+  animation: nav-active-grow 0.2s ease-out forwards;
+}
+
+@keyframes nav-active-grow {
+  from { height: 0; top: 50%; }
+  to { height: 100%; top: 0; }
+}
+
+/* Custom Table Row Hover */
+.table-row-hover:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  transition: background-color 0.15s ease;
+}
+
+/* Skeleton Shimmer Animation */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 40%,
+    rgba(255, 255, 255, 0.03) 80%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
