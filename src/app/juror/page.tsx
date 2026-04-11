@@ -36,6 +36,7 @@ export default function JurorPanelPage() {
   const [selectedCase, setSelectedCase] = useState(0);
   const [selectedVerdict, setSelectedVerdict] = useState<string | null>(null);
   const [splitPercent, setSplitPercent] = useState(50);
+  const [votedCases, setVotedCases] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsub = subscribeToDisputes((d) => { 
@@ -94,6 +95,8 @@ export default function JurorPanelPage() {
             console.error('Background sync failed:', err);
             toast.error('Failed to sync vote to network.', { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
         });
+        
+        setVotedCases(prev => new Set(prev).add(dispute.id));
       }
 
       clearTimeout(hardTimeout);
@@ -340,10 +343,10 @@ export default function JurorPanelPage() {
               <div className="mt-10 space-y-4">
                 <button
                   onClick={handleVoteSubmit}
-                  disabled={!selectedVerdict || dispute.jurors.every(j => j.hasVoted)}
+                  disabled={!selectedVerdict || dispute.jurors.every(j => j.hasVoted) || votedCases.has(dispute.id)}
                   className="w-full py-5 rounded-2xl bg-gradient-to-r from-brand-teal to-brand-purple text-[#060612] font-sans text-sm font-bold tracking-widest hover:scale-[1.01] active:scale-[0.99] transition-all shadow-xl shadow-brand-teal/20 disabled:opacity-30 disabled:scale-100 disabled:shadow-none uppercase"
                 >
-                  {dispute.jurors.every(j => j.hasVoted) ? 'NO ELIGIBLE VOTES LEFT' : 'Verify & Commit Verdict'}
+                  {votedCases.has(dispute.id) ? 'VOTE RECORDED' : dispute.jurors.every(j => j.hasVoted) ? 'NO ELIGIBLE VOTES LEFT' : 'Verify & Commit Verdict'}
                 </button>
                 <div className="flex items-center justify-center gap-3 text-[9px] font-mono text-[#6060A0] font-bold uppercase tracking-[0.2em] opacity-60">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>

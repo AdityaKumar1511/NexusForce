@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { subscribeToDeals } from '@/lib/firebaseService';
+import { subscribeToDeals, createDispute } from '@/lib/firebaseService';
 import { useRaiseDispute } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
 import type { Deal } from '@/lib/types';
@@ -264,10 +264,11 @@ export default function DisputeFilingPage() {
       };
 
       // 1. Send on-chain transaction, then index to Firebase
-      const result = await raiseDisputeHook.execute(disputeData, reasonString);
+      // const result = await raiseDisputeHook.execute(disputeData, reasonString);
+      const disputeId = await createDispute(disputeData);
 
       // 2. Run the VRF animation with the returned dispute ID
-      await runVrfAnimation(result?.disputeId || '#NEW', jurorAddresses);
+      await runVrfAnimation(disputeId || '#NEW', jurorAddresses);
       setIsSubmitting(false);
     } catch (err) {
       console.error(err);

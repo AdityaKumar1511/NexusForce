@@ -187,7 +187,7 @@ export default function DashboardPage() {
 
   const isUserBuyer = (deal: Deal) => deal.buyer.toLowerCase() === myWallet;
 
-  const totalEscrowed = deals.filter(d => d.status === 'active' || d.status === 'in_dispute').reduce((sum, d) => sum + d.value, 0);
+  const totalEscrowed = deals.filter(d => ['active', 'in_dispute', 'pending_signatures', 'confirmed'].includes(d.status)).reduce((sum, d) => sum + d.value, 0);
   const activeDeals = deals.filter(d => d.status !== 'completed').length;
   const activeDisputes = disputes.filter(d => d.status === 'voting' || d.status === 'pending_jury');
 
