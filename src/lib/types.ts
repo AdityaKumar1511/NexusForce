@@ -124,3 +124,11 @@ export interface GraphLink {
   source: string | GraphNode;
   target: string | GraphNode;
 }
+
+export interface DealMessage {
+  id: string;
+  dealId: string;
+  sender: string;
+  text: string;
+  timestamp: Date;
+}

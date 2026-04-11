@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import StatCard from '@/components/ui/StatCard';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -13,11 +13,13 @@ import {
   subscribeToActivity,
   subscribeToJurorStats,
   hasSeeded,
+  subscribeToDealMessages,
+  sendDealMessage,
 } from '@/lib/firebaseService';
 import { useSignDeal } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
 import { seedFirestore } from '@/lib/seedData';
-import type { Deal, Dispute, ActivityEvent, JurorStats } from '@/lib/types';
+import type { Deal, Dispute, ActivityEvent, JurorStats, DealMessage } from '@/lib/types';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
@@ -67,6 +69,43 @@ export default function DashboardPage() {
   });
 
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [dealMessages, setDealMessages] = useState<DealMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isSendingMsg, setIsSendingMsg] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!selectedDeal) {
+      setDealMessages([]);
+      return;
+    }
+    const unsub = subscribeToDealMessages(selectedDeal.id, setDealMessages);
+    return () => unsub();
+  }, [selectedDeal]);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [dealMessages, selectedDeal]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !selectedDeal || !walletAddress) {
+      if (!walletAddress) toast.error('Connect wallet to send messages');
+      return;
+    }
+    setIsSendingMsg(true);
+    try {
+      await sendDealMessage(selectedDeal.id, walletAddress, chatInput.trim());
+      setChatInput('');
+    } catch (err) {
+      console.error('Failed to send msg:', err);
+      toast.error('Failed to send message');
+    } finally {
+      setIsSendingMsg(false);
+    }
+  };
 
   // ─── On-chain deal completion hook ─────────────────────────
 
@@ -236,7 +275,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Table Header */}
-        <div className="hidden lg:grid grid-cols-[100px_1fr_120px_160px_140px_200px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.2em] border-b border-white/5 lg:gap-x-8">
+        <div className="hidden lg:grid grid-cols-[70px_1fr_100px_130px_130px_160px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.15em] border-b border-white/5 lg:gap-x-4">
           <span>Deal ID</span>
           <span>Counterparty</span>
           <span>Value</span>
@@ -255,7 +294,7 @@ export default function DashboardPage() {
           const dispute = getDisputeForDeal(deal.id);
           const isBuyer = isUserBuyer(deal);
           return (
-            <div key={deal.id} className="grid grid-cols-1 lg:grid-cols-[100px_1fr_120px_160px_140px_200px] px-6 py-5 items-center gap-4 lg:gap-x-8 border-b border-white/5 table-row-hover">
+            <div key={deal.id} className="grid grid-cols-1 lg:grid-cols-[70px_1fr_100px_130px_130px_160px] px-6 py-5 items-center gap-4 lg:gap-x-4 border-b border-white/5 table-row-hover">
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Deal ID</span>
                 <span className="font-mono text-sm text-brand-teal font-semibold">{deal.id}</span>
@@ -291,7 +330,7 @@ export default function DashboardPage() {
 
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Action</span>
-                <div className="flex items-center lg:justify-end gap-2 min-w-[160px]">
+                <div className="flex flex-wrap items-center lg:justify-end gap-2 text-right">
                   {deal.status === 'pending_signatures' && (
                     <button onClick={() => handleSignDeal(deal)}
                       className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-brand-amber/10 border border-brand-amber/30 text-brand-amber hover:bg-brand-amber/20 transition-all disabled:opacity-50"
@@ -301,17 +340,15 @@ export default function DashboardPage() {
                   )}
                   {deal.status === 'in_dispute' && dispute && (
                     <Link href={`/disputes/${encodeURIComponent(dispute.id)}`} className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 transition-all">
-                      VIEW DISPUTE →
+                      DISPUTE →
                     </Link>
                   )}
-                  {deal.status !== 'in_dispute' && (
-                    <button
-                      onClick={() => setSelectedDeal(deal)}
-                      className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all ml-1 w-[60px]"
-                    >
-                      VIEW
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setSelectedDeal(deal)}
+                    className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all ml-1 min-w-[60px]"
+                  >
+                    VIEW
+                  </button>
                 </div>
               </div>
             </div>
@@ -330,7 +367,7 @@ export default function DashboardPage() {
             <Link href="/disputes/new" className="text-brand-pink text-xs font-mono hover:underline transition-all tracking-tighter uppercase font-bold">+ File Dispute</Link>
           </div>
 
-          <div className="hidden lg:grid grid-cols-[110px_100px_140px_180px_1fr_120px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.2em] border-b border-white/5 lg:gap-x-8">
+          <div className="hidden lg:grid grid-cols-[90px_90px_120px_160px_1fr_100px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.2em] border-b border-white/5 lg:gap-x-4">
             <span>Dispute ID</span>
             <span>Deal ID</span>
             <span>Value</span>
@@ -342,7 +379,7 @@ export default function DashboardPage() {
           {activeDisputes.map((dispute) => {
             const votedCount = dispute.jurors.filter(j => j.hasVoted).length;
             return (
-              <div key={dispute.id} className="grid grid-cols-1 lg:grid-cols-[110px_100px_140px_180px_1fr_120px] px-6 py-5 items-center gap-4 lg:gap-x-8 border-b border-white/5 table-row-hover">
+              <div key={dispute.id} className="grid grid-cols-1 lg:grid-cols-[90px_90px_120px_160px_1fr_100px] px-6 py-5 items-center gap-4 lg:gap-x-4 border-b border-white/5 table-row-hover">
                 <div className="flex justify-between items-center lg:block">
                   <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Dispute ID</span>
                   <span className="font-mono text-sm text-brand-pink font-semibold">{dispute.id}</span>
@@ -481,9 +518,9 @@ export default function DashboardPage() {
       {/* Deal Details Modal */}
       {selectedDeal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#060612]/90 backdrop-blur-md animate-fade-in">
-          <div className="glass w-full max-w-3xl rounded-3xl overflow-hidden border-brand-teal/20 relative animate-slide-up">
+          <div className="glass w-full max-w-5xl rounded-3xl overflow-hidden border-brand-teal/20 relative animate-slide-up flex flex-col">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-teal to-[#8B85FF]" />
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02] shrink-0">
               <div>
                 <h2 className="font-sans text-xl font-bold text-[#E0E0FF] tracking-tight uppercase">DEAL {selectedDeal.id}</h2>
                 <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest mt-1">Full Off-chain Record</p>
@@ -496,64 +533,125 @@ export default function DashboardPage() {
               </button>
             </div>
             
-            <div className="p-8 max-h-[70vh] overflow-y-auto space-y-8">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-2">Deal Status</p>
-                  <StatusBadge status={selectedDeal.status} />
-                </div>
-                <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-2">Escrow Value</p>
-                  <p className="font-sans text-xl font-bold text-brand-teal tracking-tight">${selectedDeal.value.toLocaleString()} {selectedDeal.token}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Parties Involved</p>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
-                    <span className="font-mono text-[10px] text-[#5A5A7A] uppercase font-bold tracking-widest">Buyer</span>
-                    <span className="font-mono text-[11px] text-[#E0E0FF]">{selectedDeal.buyer}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-5 h-[70vh] min-h-[500px]">
+              {/* DEAL DETAILS - LEFT COLUMN */}
+              <div className="col-span-1 lg:col-span-2 p-8 overflow-y-auto border-r border-white/5 space-y-8 custom-scrollbar">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                    <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-2">Deal Status</p>
+                    <StatusBadge status={selectedDeal.status} />
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
-                    <span className="font-mono text-[10px] text-[#5A5A7A] uppercase font-bold tracking-widest">Seller</span>
-                    <span className="font-mono text-[11px] text-[#E0E0FF]">{selectedDeal.seller}</span>
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                    <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-2">Escrow Value</p>
+                    <p className="font-sans text-lg font-bold text-brand-teal tracking-tight">${selectedDeal.value.toLocaleString()} {selectedDeal.token}</p>
                   </div>
                 </div>
-              </div>
 
-              {selectedDeal.description && (
                 <div>
-                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Scope / Description</p>
-                  <p className="text-[#B0B0E0] text-sm leading-relaxed italic bg-white/[0.02] p-4 rounded-xl border border-white/5">{selectedDeal.description}</p>
-                </div>
-              )}
-
-              <div>
-                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Milestones</p>
-                <div className="space-y-3">
-                  {selectedDeal.milestones.map((m, i) => (
-                    <div key={i} className="flex justify-between items-center p-4 bg-white/[0.02] border border-white/5 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${m.status === 'completed' ? 'bg-brand-teal' : m.status === 'active' ? 'bg-brand-amber animate-pulse' : 'bg-white/20'}`} />
-                        <span className="font-sans text-sm text-[#E0E0FF] font-bold">{m.title}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="block font-mono text-[10px] text-[#6060A0] font-bold mb-1 uppercase tracking-widest">Target: {new Date(m.deadline).toLocaleDateString()}</span>
-                        <span className="inline-block px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-[#060612] border border-white/10 text-[#B0B0E0]">{m.percentage}%</span>
-                      </div>
+                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Parties Involved</p>
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-1 p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                      <span className="font-mono text-[9px] text-[#5A5A7A] uppercase font-bold tracking-widest">Buyer</span>
+                      <span className="font-mono text-[10px] text-[#E0E0FF] break-all">{selectedDeal.buyer}</span>
                     </div>
-                  ))}
+                    <div className="flex flex-col gap-1 p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                      <span className="font-mono text-[9px] text-[#5A5A7A] uppercase font-bold tracking-widest">Seller</span>
+                      <span className="font-mono text-[10px] text-[#E0E0FF] break-all">{selectedDeal.seller}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedDeal.description && (
+                  <div>
+                    <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Scope</p>
+                    <p className="text-[#B0B0E0] text-xs leading-relaxed italic bg-white/[0.02] p-4 rounded-xl border border-white/5">{selectedDeal.description}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Milestones</p>
+                  <div className="space-y-2">
+                    {selectedDeal.milestones.map((m, i) => (
+                      <div key={i} className="flex justify-between items-center p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-1.5 h-1.5 rounded-full ${m.status === 'completed' ? 'bg-brand-teal' : m.status === 'active' ? 'bg-brand-amber animate-pulse' : 'bg-white/20'}`} />
+                          <span className="font-sans text-xs text-[#E0E0FF] font-bold">{m.title}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-[#060612] border border-white/10 text-[#B0B0E0]">{m.percentage}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex justify-end">
-              <button 
-                onClick={() => setSelectedDeal(null)}
-                className="px-6 py-2 rounded-xl border border-white/10 text-xs font-sans font-bold text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all uppercase tracking-widest"
-              >
-                Close View
-              </button>
+
+              {/* CHAT LAYER / LOGS - RIGHT COLUMN */}
+              <div className="col-span-1 lg:col-span-3 flex flex-col h-full bg-white/[0.01]">
+                <div className="p-4 border-b border-white/5 bg-black/20 shrink-0">
+                  <p className="font-mono text-[10px] text-[#8B85FF] uppercase tracking-widest font-bold flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#8B85FF] animate-pulse" />
+                    Encrypted Evidence Log
+                  </p>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-gradient-to-b from-transparent to-black/10">
+                  {dealMessages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center opacity-50">
+                      <svg className="w-8 h-8 text-[#6060A0] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      <p className="font-mono text-[#6060A0] text-[10px] uppercase tracking-widest text-center">No messages yet.<br/>Start the evidence trail.</p>
+                    </div>
+                  ) : (
+                    dealMessages.map((msg) => {
+                      const isMe = msg.sender.toLowerCase() === myWallet;
+                      return (
+                        <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-fade-in`}>
+                          <div className={`max-w-[85%] rounded-2xl p-4 ${isMe ? 'bg-brand-purple/10 border border-brand-purple/20 rounded-tr-sm' : 'bg-white/5 border border-white/10 rounded-tl-sm'}`}>
+                            <p className="text-[#E0E0FF] text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                          </div>
+                          <div className={`flex items-center gap-2 mt-2 px-1 opacity-70 ${isMe ? 'flex-row-reverse' : ''}`}>
+                            <span className="font-mono text-[9px] text-[#6060A0] uppercase">{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            <span className="font-mono text-[9px] text-[#5A5A7A] bg-black/40 px-1.5 py-0.5 rounded border border-white/5">
+                              {msg.sender.slice(0,6)}...{msg.sender.slice(-4)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} className="h-1" />
+                </div>
+
+                <div className="p-4 border-t border-white/5 bg-black/20 shrink-0">
+                  <form onSubmit={handleSendMessage} className="flex gap-3">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Record a message to the evidence trail..."
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-[#E0E0FF] font-sans focus:outline-none focus:border-[#8B85FF]/50 focus:ring-1 focus:ring-[#8B85FF]/20 transition-all"
+                      disabled={isSendingMsg}
+                    />
+                    <button 
+                      type="submit"
+                      disabled={isSendingMsg || !chatInput.trim()}
+                      className="px-6 rounded-xl bg-[#8B85FF]/10 border border-[#8B85FF]/30 text-[#8B85FF] font-sans font-bold hover:bg-[#8B85FF]/20 hover:shadow-[0_0_15px_rgba(139,133,255,0.2)] transition-all disabled:opacity-50 flex items-center justify-center uppercase tracking-wider text-[11px]"
+                    >
+                      {isSendingMsg ? (
+                        <span className="flex gap-1 items-center">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#8B85FF] animate-bounce"></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#8B85FF] animate-bounce" style={{animationDelay: '0.1s'}}></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#8B85FF] animate-bounce" style={{animationDelay: '0.2s'}}></span>
+                        </span>
+                      ) : (
+                        <>Record ↵</>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </div>
             </div>
           </div>
         </div>

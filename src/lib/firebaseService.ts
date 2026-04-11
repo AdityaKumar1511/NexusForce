@@ -24,6 +24,7 @@ import type {
   GlobalStats,
   GraphNode,
   GraphLink,
+  DealMessage,
 } from './types';
 
 // ─── Collection References ───────────────────────────────────────
@@ -31,6 +32,7 @@ const dealsCol = collection(db, 'deals');
 const disputesCol = collection(db, 'disputes');
 const proposalsCol = collection(db, 'proposals');
 const activityCol = collection(db, 'activity');
+const dealMessagesCol = collection(db, 'dealMessages');
 
 // ─── Helpers: Firestore ↔ App date conversion ───────────────────
 function toDate(val: unknown): Date {
@@ -142,6 +144,16 @@ function parseActivity(data: Record<string, unknown>): ActivityEvent {
     message: data.message as string,
     dealId: data.dealId as string | undefined,
     disputeId: data.disputeId as string | undefined,
+  };
+}
+
+function parseDealMessage(id: string, data: Record<string, unknown>): DealMessage {
+  return {
+    id,
+    dealId: data.dealId as string,
+    sender: data.sender as string,
+    text: data.text as string,
+    timestamp: toDate(data.timestamp),
   };
 }
 
@@ -535,5 +547,27 @@ export function buildTickerEvents(activity: ActivityEvent[]): string[] {
       return `⚖ ${event.message.toUpperCase()}`;
     }
     return `● ${event.message.toUpperCase()}`;
+  });
+}
+
+// ─── DEAL MESSAGES (CHAT LAYER) ──────────────────────────────────
+
+export async function sendDealMessage(dealId: string, sender: string, text: string): Promise<string> {
+  const messageData = {
+    dealId,
+    sender,
+    text,
+    timestamp: new Date(),
+  };
+  const docRef = await addDoc(dealMessagesCol, serializeDates(messageData as unknown as Record<string, unknown>));
+  return docRef.id;
+}
+
+export function subscribeToDealMessages(dealId: string, callback: (messages: DealMessage[]) => void): () => void {
+  const q = query(dealMessagesCol, orderBy('timestamp', 'asc'));
+  return onSnapshot(q, snap => {
+    const allMessages = snap.docs.map(d => parseDealMessage(d.id, d.data() as Record<string, unknown>));
+    const dealMessages = allMessages.filter(m => m.dealId === dealId);
+    callback(dealMessages);
   });
 }
