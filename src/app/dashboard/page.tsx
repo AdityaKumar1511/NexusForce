@@ -81,7 +81,7 @@ export default function DashboardPage() {
       setDeals(unique);
     });
     const unsub2 = subscribeToDisputes((d) => {
-      const all = [...INITIAL_DISPUTES, ...d];
+      const all = [...d, ...INITIAL_DISPUTES];
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setDisputes(unique);
@@ -365,12 +365,27 @@ export default function DashboardPage() {
                       {confirmingDeal === deal.id ? '...' : 'CONFIRM ON-CHAIN'}
                     </button>
                   )}
-                  <button
-                    onClick={() => setSelectedDeal(deal)}
-                    className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all ml-1 w-[60px]"
-                  >
-                    VIEW
-                  </button>
+                  {deal.status === 'pending_signatures' && (
+                    <button onClick={() => handleSignDeal(deal)}
+                      disabled={confirmingDeal === deal.id}
+                      className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-brand-amber/10 border border-brand-amber/30 text-brand-amber hover:bg-brand-amber/20 transition-all disabled:opacity-50"
+                    >
+                      {confirmingDeal === deal.id ? '...' : 'AWAITING COUNTERPARTY'}
+                    </button>
+                  )}
+                  {deal.status === 'in_dispute' && dispute && (
+                    <Link href={`/disputes/${encodeURIComponent(dispute.id)}`} className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 transition-all">
+                      VIEW DISPUTE →
+                    </Link>
+                  )}
+                  {deal.status !== 'in_dispute' && (
+                    <button
+                      onClick={() => setSelectedDeal(deal)}
+                      className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all ml-1 w-[60px]"
+                    >
+                      VIEW
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

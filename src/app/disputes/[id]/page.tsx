@@ -39,7 +39,7 @@ export default function ActiveDisputePage() {
 
   useEffect(() => {
     const unsub = subscribeToDisputes((d) => {
-      setDisputes([...INITIAL_DISPUTES, ...d]);
+      setDisputes([...d, ...INITIAL_DISPUTES]);
     });
     return () => unsub();
   }, []);

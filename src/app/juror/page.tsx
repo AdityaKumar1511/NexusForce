@@ -39,7 +39,7 @@ export default function JurorPanelPage() {
 
   useEffect(() => {
     const unsub = subscribeToDisputes((d) => { 
-      const all = [...INITIAL_DISPUTES, ...d];
+      const all = [...d, ...INITIAL_DISPUTES];
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       
