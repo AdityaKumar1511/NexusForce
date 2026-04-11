@@ -65,8 +65,8 @@ export default function DashboardPage() {
     reputationScore: 847, maxReputation: 1000, percentile: 12,
     nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
   });
-  const [loading, setLoading] = useState(true);
   const [confirmingDeal, setConfirmingDeal] = useState<string | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
 
   // ─── On-chain deal completion hook ─────────────────────────
   const completeDealHook = useCompleteDeal();
@@ -79,7 +79,6 @@ export default function DashboardPage() {
       // Sort to put newest first (optional, but good)
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setDeals(unique);
-      setLoading(false);
     });
     const unsub2 = subscribeToDisputes((d) => {
       const all = [...INITIAL_DISPUTES, ...d];
@@ -124,18 +123,21 @@ export default function DashboardPage() {
     }
 
     setConfirmingDeal(dealId);
+    toast.dismiss();
     const toastId = toast.loading(`🔐 Sign transaction to release funds for ${dealId}...`, {
       style: {
-        background: 'rgba(255, 255, 255, 0.04)',
-        color: '#E0E0FF',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif',
-        fontSize: '13px'
+        background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px'
       },
     });
+
+    const hardTimeout = setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+    }, 3000);
+
     try {
       await completeDealHook.execute(dealId);
+      clearTimeout(hardTimeout);
       toast.dismiss(toastId);
       toast.success(`✓ DEAL ${dealId} COMPLETED — Funds released on-chain!`, {
         style: {
@@ -150,6 +152,7 @@ export default function DashboardPage() {
         duration: 5000,
       });
     } catch (err) {
+      clearTimeout(hardTimeout);
       console.error(err);
       toast.dismiss(toastId);
       const errorMsg = err instanceof Error && err.message.includes('User rejected')
@@ -185,16 +188,17 @@ export default function DashboardPage() {
       return;
     }
     setConfirmingDeal(deal.id);
+    toast.dismiss();
     const toastId = toast.loading(`🔐 Sign typed data to confirm ${deal.id}...`, {
       style: {
-        background: 'rgba(255, 255, 255, 0.04)',
-        color: '#E0E0FF',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif',
-        fontSize: '13px'
+        background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px'
       },
     });
+
+    const hardTimeout = setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+    }, 3000);
 
     try {
       const myWallet = walletAddress.toLowerCase();
@@ -203,6 +207,7 @@ export default function DashboardPage() {
 
       await signDealHook.execute(deal.id, deal.value.toString(), deal.buyer, deal.seller, role);
 
+      clearTimeout(hardTimeout);
       toast.dismiss(toastId);
       toast.success(`✓ DEAL ${deal.id} CONFIRMED!`, {
         style: {
@@ -295,7 +300,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Table Header */}
-        <div className="hidden lg:grid grid-cols-[100px_1fr_120px_160px_140px_140px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.2em] border-b border-white/5 lg:gap-x-8">
+        <div className="hidden lg:grid grid-cols-[100px_1fr_120px_160px_140px_200px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.2em] border-b border-white/5 lg:gap-x-8">
           <span>Deal ID</span>
           <span>Counterparty</span>
           <span>Value</span>
@@ -304,26 +309,17 @@ export default function DashboardPage() {
           <span>Action</span>
         </div>
 
-        {/* ── Premium Skeleton Loader ── */}
-        {loading && (
-          <div>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <DealRowSkeleton key={i} delay={i * 120} />
-            ))}
-          </div>
-        )}
-
-        {!loading && deals.length === 0 && (
+        {deals.length === 0 && (
           <div className="px-6 py-12 text-center">
             <p className="font-mono text-xs text-[#6060A0]">No deals yet. <Link href="/deals/new" className="text-brand-teal hover:underline transition-all font-bold">CREATE ONE →</Link></p>
           </div>
         )}
 
-        {!loading && deals.map((deal) => {
+        {deals.map((deal) => {
           const dispute = getDisputeForDeal(deal.id);
           const isBuyer = isUserBuyer(deal);
           return (
-            <div key={deal.id} className="grid grid-cols-1 lg:grid-cols-[100px_1fr_120px_160px_140px_140px] px-6 py-5 items-center gap-4 lg:gap-x-8 border-b border-white/5 table-row-hover">
+            <div key={deal.id} className="grid grid-cols-1 lg:grid-cols-[100px_1fr_120px_160px_140px_200px] px-6 py-5 items-center gap-4 lg:gap-x-8 border-b border-white/5 table-row-hover">
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Deal ID</span>
                 <span className="font-mono text-sm text-brand-teal font-semibold">{deal.id}</span>
@@ -359,7 +355,7 @@ export default function DashboardPage() {
 
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Action</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center lg:justify-end gap-2 min-w-[160px]">
                   {deal.status === 'active' && (
                     <button
                       onClick={() => handleConfirmDeal(deal.id)}
@@ -369,32 +365,12 @@ export default function DashboardPage() {
                       {confirmingDeal === deal.id ? '...' : 'CONFIRM ON-CHAIN'}
                     </button>
                   )}
-                  {deal.status === 'pending_signatures' && (isBuyer ? !deal.buyerSignature : !deal.sellerSignature) && (
-                    <button
-                      onClick={() => handleSignDeal(deal)}
-                      disabled={confirmingDeal === deal.id}
-                      className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-brand-amber/10 border border-brand-amber/30 text-brand-amber hover:bg-brand-amber/20 transition-all disabled:opacity-50"
-                    >
-                      {confirmingDeal === deal.id ? '...' : 'SIGN TO CONFIRM'}
-                    </button>
-                  )}
-                  {deal.status === 'pending_signatures' && (isBuyer ? deal.buyerSignature : deal.sellerSignature) && (
-                    <span className="text-[10px] font-mono text-[#6060A0] uppercase font-bold">Awaiting Counterparty</span>
-                  )}
-                  {deal.status === 'confirmed' && (
-                    <span className="text-[10px] font-mono text-brand-teal uppercase font-bold">Confirmed Off-Chain</span>
-                  )}
-                  {deal.status === 'in_dispute' && dispute && (
-                    <Link href={`/disputes/${encodeURIComponent(dispute.id)}`} className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 transition-all">
-                      VIEW ⚖
-                    </Link>
-                  )}
-                  {deal.status === 'completed' && (
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold text-brand-teal">
-                      <div className="w-1 h-1 rounded-full bg-current" />
-                      DONE
-                    </span>
-                  )}
+                  <button
+                    onClick={() => setSelectedDeal(deal)}
+                    className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all ml-1 w-[60px]"
+                  >
+                    VIEW
+                  </button>
                 </div>
               </div>
             </div>
@@ -560,6 +536,87 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Deal Details Modal */}
+      {selectedDeal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#060612]/90 backdrop-blur-md animate-fade-in">
+          <div className="glass w-full max-w-3xl rounded-3xl overflow-hidden border-brand-teal/20 relative animate-slide-up">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-teal to-[#8B85FF]" />
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div>
+                <h2 className="font-sans text-xl font-bold text-[#E0E0FF] tracking-tight uppercase">DEAL {selectedDeal.id}</h2>
+                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest mt-1">Full Off-chain Record</p>
+              </div>
+              <button 
+                onClick={() => setSelectedDeal(null)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#6060A0] hover:text-white hover:bg-white/10 transition-all text-xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-8 max-h-[70vh] overflow-y-auto space-y-8">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
+                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-2">Deal Status</p>
+                  <StatusBadge status={selectedDeal.status} />
+                </div>
+                <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
+                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-2">Escrow Value</p>
+                  <p className="font-sans text-xl font-bold text-brand-teal tracking-tight">${selectedDeal.value.toLocaleString()} {selectedDeal.token}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Parties Involved</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                    <span className="font-mono text-[10px] text-[#5A5A7A] uppercase font-bold tracking-widest">Buyer</span>
+                    <span className="font-mono text-[11px] text-[#E0E0FF]">{selectedDeal.buyer}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                    <span className="font-mono text-[10px] text-[#5A5A7A] uppercase font-bold tracking-widest">Seller</span>
+                    <span className="font-mono text-[11px] text-[#E0E0FF]">{selectedDeal.seller}</span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedDeal.description && (
+                <div>
+                  <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Scope / Description</p>
+                  <p className="text-[#B0B0E0] text-sm leading-relaxed italic bg-white/[0.02] p-4 rounded-xl border border-white/5">{selectedDeal.description}</p>
+                </div>
+              )}
+
+              <div>
+                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold mb-3">Milestones</p>
+                <div className="space-y-3">
+                  {selectedDeal.milestones.map((m, i) => (
+                    <div key={i} className="flex justify-between items-center p-4 bg-white/[0.02] border border-white/5 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${m.status === 'completed' ? 'bg-brand-teal' : m.status === 'active' ? 'bg-brand-amber animate-pulse' : 'bg-white/20'}`} />
+                        <span className="font-sans text-sm text-[#E0E0FF] font-bold">{m.title}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="block font-mono text-[10px] text-[#6060A0] font-bold mb-1 uppercase tracking-widest">Target: {new Date(m.deadline).toLocaleDateString()}</span>
+                        <span className="inline-block px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-[#060612] border border-white/10 text-[#B0B0E0]">{m.percentage}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-white/5 bg-white/[0.02] flex justify-end">
+              <button 
+                onClick={() => setSelectedDeal(null)}
+                className="px-6 py-2 rounded-xl border border-white/10 text-xs font-sans font-bold text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all uppercase tracking-widest"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

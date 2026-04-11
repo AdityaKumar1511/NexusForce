@@ -36,7 +36,6 @@ export default function JurorPanelPage() {
   const [selectedCase, setSelectedCase] = useState(0);
   const [selectedVerdict, setSelectedVerdict] = useState<string | null>(null);
   const [splitPercent, setSplitPercent] = useState(50);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = subscribeToDisputes((d) => { 
@@ -46,7 +45,6 @@ export default function JurorPanelPage() {
       
       const votingDisputes = unique.filter(item => item.status === 'voting');
       setDisputes(votingDisputes); 
-      setLoading(false); 
     });
     
     let isSeeding = false;
@@ -72,41 +70,43 @@ export default function JurorPanelPage() {
   const handleVoteSubmit = async () => {
     if (!dispute || !selectedVerdict) return;
 
-    toast.loading('Submitting vote on-chain...', {
-      style: { 
-        background: 'rgba(255, 255, 255, 0.04)', 
-        color: '#E0E0FF', 
-        border: '1px solid rgba(255, 255, 255, 0.08)', 
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif', 
-        fontSize: '13px' 
-      },
-      duration: 2000,
+    toast.dismiss();
+    const toastId = toast.loading('Submitting vote on-chain...', {
+      style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' },
     });
 
+    const hardTimeout = setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+    }, 3000);
+
     try {
-      // Find first non-voted juror to simulate voting (demo mode)
       const jurorIndex = dispute.jurors.findIndex(j => !j.hasVoted);
       if (jurorIndex >= 0) {
-        await submitJurorVote(dispute.id, jurorIndex, selectedVerdict as 'buyer_wins' | 'seller_wins' | 'split');
+        // Optimistic UI update
+        const updatedJurors = [...dispute.jurors];
+        updatedJurors[jurorIndex] = { ...updatedJurors[jurorIndex], hasVoted: true, vote: selectedVerdict as 'buyer_wins' | 'seller_wins' | 'split' };
+        setDisputes(prev => prev.map(d => d.id === dispute.id ? { ...d, jurors: updatedJurors } : d));
+        setSelectedVerdict(null);
+
+        // Background sync to network so dashboard listener picks it up
+        submitJurorVote(dispute.id, jurorIndex, selectedVerdict as 'buyer_wins' | 'seller_wins' | 'split').catch(err => {
+            console.error('Background sync failed:', err);
+            toast.error('Failed to sync vote to network.', { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+        });
       }
 
-      setTimeout(() => {
-        toast.success('✓ Vote submitted! Your verdict has been recorded on-chain.', {
-          style: { 
-            background: 'rgba(255, 255, 255, 0.04)', 
-            color: '#00E5C3', 
-            border: '1px solid rgba(255, 255, 255, 0.08)', 
-            backdropFilter: 'blur(20px)',
-            fontFamily: 'Space Grotesk, sans-serif', 
-            fontSize: '13px' 
-          },
-          iconTheme: { primary: '#00E5C3', secondary: '#060612' },
-          duration: 4000,
-        });
-      }, 2500);
+      clearTimeout(hardTimeout);
+      toast.dismiss(toastId);
+      toast.success('✓ Vote submitted! Your verdict has been recorded on-chain.', {
+        style: { background: 'rgba(255, 255, 255, 0.04)', color: '#00E5C3', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' },
+        iconTheme: { primary: '#00E5C3', secondary: '#060612' },
+        duration: 1500,
+      });
     } catch (err) {
+      clearTimeout(hardTimeout);
       console.error(err);
+      toast.dismiss(toastId);
       toast.error('Failed to submit vote.', {
         style: { 
           background: 'rgba(255, 255, 255, 0.04)', 
@@ -120,15 +120,7 @@ export default function JurorPanelPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="text-center py-20 glass">
-          <p className="font-mono text-[10px] text-[#6060A0] animate-pulse tracking-[0.2em] uppercase">Hydrating juror panel from Polygon...</p>
-        </div>
-      </DashboardLayout>
-    );
-  }
+
 
   if (disputes.length === 0) {
     return (
@@ -348,10 +340,10 @@ export default function JurorPanelPage() {
               <div className="mt-10 space-y-4">
                 <button
                   onClick={handleVoteSubmit}
-                  disabled={!selectedVerdict}
+                  disabled={!selectedVerdict || dispute.jurors.every(j => j.hasVoted)}
                   className="w-full py-5 rounded-2xl bg-gradient-to-r from-brand-teal to-brand-purple text-[#060612] font-sans text-sm font-bold tracking-widest hover:scale-[1.01] active:scale-[0.99] transition-all shadow-xl shadow-brand-teal/20 disabled:opacity-30 disabled:scale-100 disabled:shadow-none uppercase"
                 >
-                  Verify & Commit Verdict
+                  {dispute.jurors.every(j => j.hasVoted) ? 'NO ELIGIBLE VOTES LEFT' : 'Verify & Commit Verdict'}
                 </button>
                 <div className="flex items-center justify-center gap-3 text-[9px] font-mono text-[#6060A0] font-bold uppercase tracking-[0.2em] opacity-60">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>

@@ -34,7 +34,6 @@ export default function VaultPage() {
   const [disputes, setDisputes] = useState<Dispute[]>(INITIAL_DISPUTES);
   const [filter, setFilter] = useState<'all' | 'in_progress' | 'resolved'>('all');
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
 
   // Modal State
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -48,7 +47,6 @@ export default function VaultPage() {
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setDisputes(unique);
-      setLoading(false);
     });
 
     let isSeeding = false;
@@ -93,56 +91,57 @@ export default function VaultPage() {
     const sizeStr = file.size > 1024 * 1024
       ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
       : `${(file.size / 1024).toFixed(0)} KB`;
+    const newCid = generateCID();
+    const newEvidence = {
+      name: file.name,
+      size: sizeStr,
+      type: file.type || 'application/octet-stream',
+      cid: newCid,
+      uploadedBy: 'buyer' as const,
+      uploadedAt: new Date()
+    };
 
-    const toastId = toast.loading('Uploading evidence to IPFS Vault...', {
-      style: {
-        background: 'rgba(255, 255, 255, 0.04)',
-        color: '#E0E0FF',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif',
-        fontSize: '13px'
-      },
+    // Optimistic UI Update - immediately show in grid
+    setDisputes(prev => prev.map(d => 
+      d.id === selectedDisputeId 
+        ? { ...d, evidence: [...d.evidence, newEvidence] }
+        : d
+    ));
+
+    // Close modal instantly
+    setShowUploadModal(false);
+    
+    // Process upload in background without blocking UI
+    uploadEvidenceFile(selectedDisputeId, {
+      name: file.name,
+      size: sizeStr,
+      type: file.type || 'application/octet-stream',
+      cid: newCid,
+      uploadedBy: 'buyer',
+    }).then(() => {
+      toast.success(`✓ ${file.name} permanently secured on IPFS!`, {
+        style: {
+          background: 'rgba(255, 255, 255, 0.04)', color: '#00E5C3', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px'
+        },
+      });
+    }).catch(err => {
+      console.error(err);
+      toast.error('Vault upload failed. Removing from local cache.', {
+        style: {
+          background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px'
+        },
+      });
+      // Revert optimistic update
+      setDisputes(prev => prev.map(d => 
+        d.id === selectedDisputeId 
+          ? { ...d, evidence: d.evidence.filter(e => e.cid !== newCid) }
+          : d
+      ));
     });
 
-    try {
-      await uploadEvidenceFile(selectedDisputeId, {
-        name: file.name,
-        size: sizeStr,
-        type: file.type || 'application/octet-stream',
-        cid: generateCID(),
-        uploadedBy: 'buyer',
-      });
-      toast.dismiss(toastId);
-      toast.success('✓ File added to vault and dispute record!', {
-        style: {
-          background: 'rgba(255, 255, 255, 0.04)',
-          color: '#00E5C3',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '13px'
-        },
-      });
-      setShowUploadModal(false);
-      setSelectedDisputeId('');
-    } catch (err) {
-      console.error(err);
-      toast.dismiss(toastId);
-      toast.error('Vault upload failed.', {
-        style: {
-          background: 'rgba(255, 255, 255, 0.04)',
-          color: '#EF4444',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '13px'
-        },
-      });
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    setUploading(false);
+    setSelectedDisputeId('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -194,13 +193,7 @@ export default function VaultPage() {
         </div>
       </div>
 
-      {loading && (
-        <div className="text-center py-20 glass">
-          <p className="font-mono text-[10px] text-[#6060A0] animate-pulse uppercase tracking-[0.2em]">Synchronizing vault with IPFS gateway...</p>
-        </div>
-      )}
-
-      {!loading && filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="text-center py-24 glass border-dashed border-white/5 flex flex-col items-center gap-6">
           <div className="w-16 h-16 rounded-3xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-3xl opacity-20">◇</div>
           <div>

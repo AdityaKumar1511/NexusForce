@@ -31,6 +31,7 @@ export default function CreateDealPage() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   const [createdDealId, setCreatedDealId] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
@@ -59,16 +60,18 @@ export default function CreateDealPage() {
     }
 
     setIsSubmitting(true);
+    setIsSuccess(false);
+    toast.dismiss(); // dismiss any overlaps
     const toastId = toast.loading('🔐 Sign typed data to propose the deal...', {
       style: { 
-        background: 'rgba(255, 255, 255, 0.04)', 
-        color: '#E0E0FF', 
-        border: '1px solid rgba(255, 255, 255, 0.08)', 
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif', 
-        fontSize: '13px' 
+        background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' 
       },
     });
+
+    const hardTimeout = setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+    }, 3000);
 
     try {
       const buyer = role === 'buyer' ? walletAddress : (counterparty || '0x0000000000000000000000000000000000000000');
@@ -103,15 +106,18 @@ export default function CreateDealPage() {
       // 2. Sign the data (also saves signature to DB via hook)
       const signature = await signDealHook.execute(dealId, amount || '0', buyer, seller, role);
 
+      clearTimeout(hardTimeout);
       toast.dismiss(toastId);
+      
       setTxHash(signature);
       setCreatedDealId(dealId);
-      setIsSubmitting(false);
+      setIsSuccess(true); 
 
       setTimeout(() => {
         router.push('/dashboard');
-      }, 4000);
+      }, 1500);
     } catch (err) {
+      clearTimeout(hardTimeout);
       console.error(err);
       toast.dismiss(toastId);
       const errorMsg = err instanceof Error && err.message.includes('rejected')
@@ -410,10 +416,14 @@ export default function CreateDealPage() {
 
                 <button
                   onClick={handleSign}
-                  disabled={isSubmitting}
-                  className="w-full py-5 rounded-2xl bg-gradient-to-r from-brand-teal to-[#8B85FF] text-[#060612] font-sans text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-brand-teal/20 disabled:opacity-50 disabled:scale-100 disabled:shadow-none uppercase tracking-widest"
+                  disabled={isSubmitting || isSuccess}
+                  className={`w-full py-5 rounded-2xl font-sans text-sm font-bold transition-all shadow-xl disabled:scale-100 uppercase tracking-widest ${
+                    isSuccess 
+                      ? 'bg-brand-teal text-[#060612] shadow-brand-teal/20' 
+                      : 'bg-gradient-to-r from-brand-teal to-[#8B85FF] text-[#060612] hover:scale-[1.02] active:scale-[0.98] shadow-brand-teal/20 disabled:opacity-50 disabled:shadow-none'
+                  }`}
                 >
-                  {isSubmitting ? 'PROPOSING DEAL...' : 'SIGN & PROPOSE DEAL'}
+                  {isSuccess ? 'DEAL SENT ✓' : isSubmitting ? 'PROPOSING DEAL...' : 'SIGN & PROPOSE DEAL'}
                 </button>
               </div>
             )}
