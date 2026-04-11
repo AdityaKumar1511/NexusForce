@@ -70,6 +70,8 @@ function parseDeal(id: string, data: Record<string, unknown>): Deal {
     deadline: toDate(data.deadline),
     createdAt: toDate(data.createdAt),
     txHash: data.txHash as string | undefined,
+    buyerSignature: data.buyerSignature as string | undefined,
+    sellerSignature: data.sellerSignature as string | undefined,
     milestones: ((data.milestones as Record<string, unknown>[]) || []).map(m => ({
       title: m.title as string,
       percentage: m.percentage as number,
@@ -160,10 +162,12 @@ export async function getDealById(dealId: string): Promise<Deal | null> {
   return parseDeal(snap.id, snap.data() as Record<string, unknown>);
 }
 
-export async function createDeal(deal: Omit<Deal, 'id'>): Promise<string> {
-  const dealId = `#${Math.floor(4800 + Math.random() * 200)}`;
+export async function createDeal(deal: Omit<Deal, 'id'> & { id?: string }): Promise<string> {
+  const dealId = deal.id || `#${Math.floor(4800 + Math.random() * 200)}`;
+  const dealData = { ...deal };
+  delete dealData.id;
   const ref = doc(db, 'deals', dealId);
-  await setDoc(ref, serializeDates(deal as unknown as Record<string, unknown>));
+  await setDoc(ref, serializeDates(dealData as unknown as Record<string, unknown>));
 
   // Add activity event
   await addActivityEvent({
@@ -208,6 +212,33 @@ export function subscribeToDeals(callback: (deals: Deal[]) => void): () => void 
   return onSnapshot(dealsCol, snap => {
     const deals = snap.docs.map(d => parseDeal(d.id, d.data() as Record<string, unknown>));
     callback(deals);
+  });
+}
+
+export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller', signature: string): Promise<void> {
+  const ref = doc(db, 'deals', dealId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const currentDeal = snap.data();
+
+  const updates: Record<string, unknown> = {};
+  if (role === 'buyer') updates.buyerSignature = signature;
+  if (role === 'seller') updates.sellerSignature = signature;
+
+  const hasBuyerSig = role === 'buyer' ? true : !!currentDeal.buyerSignature;
+  const hasSellerSig = role === 'seller' ? true : !!currentDeal.sellerSignature;
+
+  if (hasBuyerSig && hasSellerSig) {
+    updates.status = 'confirmed';
+  }
+
+  await updateDoc(ref, updates);
+
+  await addActivityEvent({
+    type: 'deal',
+    message: `DEAL ${dealId} · ${role.toUpperCase()} signed off-chain data. ${hasBuyerSig && hasSellerSig ? 'Status changed to CONFIRMED' : 'Awaiting counterparty'}`,
+    dealId,
+    timestamp: new Date(),
   });
 }
 

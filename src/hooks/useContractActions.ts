@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useWriteContract } from 'wagmi';
+import { useWriteContract, useSignTypedData } from 'wagmi';
 import { parseEther } from 'viem';
 import { NEXUS_ESCROW_ABI, NEXUS_ESCROW_ADDRESS } from '@/lib/contract';
 import {
@@ -9,8 +9,10 @@ import {
   completeDeal as indexCompleteDeal,
   createDispute as indexCreateDispute,
   submitJurorVote as indexSubmitJurorVote,
+  saveDealSignature,
 } from '@/lib/firebaseService';
 import type { Deal, Dispute } from '@/lib/types';
+import { DOMAIN, TYPES } from '@/lib/eip712';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -224,6 +226,58 @@ export function useSubmitJurorVote() {
       }
     },
     [writeContractAsync]
+  );
+
+  return { execute, ...state };
+}
+
+// ─── useSignDeal ─────────────────────────────────────────────
+// Off-chain EIP-712 signing for 2-party confirmation
+
+export function useSignDeal() {
+  const { signTypedDataAsync } = useSignTypedData();
+  const [state, setState] = useState<{ isPending: boolean; error: string | null }>({
+    isPending: false,
+    error: null,
+  });
+
+  const execute = useCallback(
+    async (
+      dealId: string,
+      amount: string,
+      buyer: string,
+      seller: string,
+      role: 'buyer' | 'seller'
+    ) => {
+      setState({ isPending: true, error: null });
+
+      try {
+        const signature = await signTypedDataAsync({
+          domain: DOMAIN,
+          types: TYPES,
+          primaryType: 'DealRequest',
+          message: {
+            dealId,
+            amount: parseEther(amount || '0'),
+            buyer: buyer as `0x${string}`,
+            seller: seller as `0x${string}`,
+          },
+        });
+
+        await saveDealSignature(dealId, role, signature);
+
+        setState({ isPending: false, error: null });
+        return signature;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Signature failed';
+        setState({
+          isPending: false,
+          error: errorMessage.includes('User rejected') ? 'Signature rejected by user' : errorMessage,
+        });
+        throw err;
+      }
+    },
+    [signTypedDataAsync]
   );
 
   return { execute, ...state };

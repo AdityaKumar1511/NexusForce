@@ -11,17 +11,35 @@ import toast from 'react-hot-toast';
 
 const generateCID = () => `Qm${Math.random().toString(36).slice(2, 14)}${Math.random().toString(36).slice(2, 14)}`;
 
+const INITIAL_DISPUTES: Dispute[] = [
+  {
+    id: '#1203', dealId: '#4821', dealValue: 2400, reason: ['QUALITY BELOW SPEC', 'MISSED DEADLINE'], description: 'The frontend deliverable does not match the wireframes approved in Milestone 1.', buyer: '0x3F4a8b2C...', seller: '0x7E2c9D3B...', status: 'voting', raisedBy: 'buyer',
+    evidence: [
+      { name: 'wireframe_comparison.pdf', size: '2.4 MB', type: 'application/pdf', cid: 'QmX7b3yZ9rK2mN4pQ8wF5vH6jT1sA0cE3dG8iL2oU9kR', uploadedBy: 'buyer', uploadedAt: new Date() },
+      { name: 'delivery_proof.mp4', size: '24.5 MB', type: 'video/mp4', cid: 'QmA2e0cT5uN9pQ7sY1zI8wK3mX4dF2hJ6lO0rU5vG9yP', uploadedBy: 'seller', uploadedAt: new Date() },
+    ],
+    jurors: [
+      { id: 1, address: '0xJUR1...A2c3', reputation: 892, hasVoted: true, vote: 'buyer_wins', staked: 150 },
+      { id: 2, address: '0xJUR2...B4d5', reputation: 731, hasVoted: true, vote: 'buyer_wins', staked: 200 },
+      { id: 3, address: '0xJUR3...C6e7', reputation: 884, hasVoted: false, staked: 175 },
+      { id: 4, address: '0xJUR4...D8f9', reputation: 756, hasVoted: true, vote: 'seller_wins', staked: 125 },
+      { id: 5, address: '0xJUR5...E0g1', reputation: 945, hasVoted: true, vote: 'buyer_wins', staked: 300 },
+      { id: 6, address: '0xJUR6...F2h3', reputation: 812, hasVoted: true, vote: 'buyer_wins', staked: 180 },
+      { id: 7, address: '0xJUR7...G4i5', reputation: 667, hasVoted: false, staked: 100 },
+    ],
+    votingDeadline: new Date(Date.now() + 31 * 60 * 60 * 1000), createdAt: new Date(Date.now() - 16 * 60 * 60 * 1000), timeline: []
+  }
+];
+
 export default function ActiveDisputePage() {
   const { id } = useParams();
-  const [disputes, setDisputes] = useState<Dispute[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [disputes, setDisputes] = useState<Dispute[]>(INITIAL_DISPUTES);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsub = subscribeToDisputes((d) => {
-      setDisputes(d);
-      setLoading(false);
+      setDisputes([...d, ...INITIAL_DISPUTES]);
     });
     return () => unsub();
   }, []);
@@ -37,16 +55,17 @@ export default function ActiveDisputePage() {
       ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
       : `${(file.size / 1024).toFixed(0)} KB`;
 
+    toast.dismiss();
     const toastId = toast.loading('Uploading evidence to IPFS...', {
       style: { 
-        background: 'rgba(255, 255, 255, 0.04)', 
-        color: '#E0E0FF', 
-        border: '1px solid rgba(255, 255, 255, 0.08)', 
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif', 
-        fontSize: '13px' 
+        background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' 
       },
     });
+
+    const hardTimeout = setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+    }, 3000);
 
     try {
       await uploadEvidenceFile(dispute.id, {
@@ -56,28 +75,20 @@ export default function ActiveDisputePage() {
         cid: generateCID(),
         uploadedBy: 'buyer', // Simplified for demo
       });
+      clearTimeout(hardTimeout);
       toast.dismiss(toastId);
       toast.success('✓ Evidence uploaded successfully!', {
         style: { 
-          background: 'rgba(255, 255, 255, 0.04)', 
-          color: '#00E5C3', 
-          border: '1px solid rgba(255, 255, 255, 0.08)', 
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif', 
-          fontSize: '13px' 
+          background: 'rgba(255, 255, 255, 0.04)', color: '#00E5C3', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' 
         },
       });
     } catch (err) {
+      clearTimeout(hardTimeout);
       console.error(err);
       toast.dismiss(toastId);
       toast.error('Failed to upload evidence.', {
         style: { 
-          background: 'rgba(255, 255, 255, 0.04)', 
-          color: '#EF4444', 
-          border: '1px solid rgba(255, 255, 255, 0.08)', 
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif', 
-          fontSize: '13px' 
+          background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' 
         },
       });
     } finally {
@@ -85,16 +96,6 @@ export default function ActiveDisputePage() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
-
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="text-center py-20">
-          <p className="font-mono text-xs text-nf-text-tertiary animate-pulse">Loading dispute data...</p>
-        </div>
-      </DashboardLayout>
-    );
-  }
 
   if (!dispute) {
     return (

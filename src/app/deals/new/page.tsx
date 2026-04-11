@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { useCreateDeal } from '@/hooks/useContractActions';
+import { useSignDeal } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
+import { createDeal as indexCreateDeal } from '@/lib/firebaseService';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
@@ -18,7 +19,7 @@ const steps = ['PARTIES', 'MILESTONES', 'PAYMENT', 'REVIEW & SIGN'];
 export default function CreateDealPage() {
   const router = useRouter();
   const { address: walletAddress, isConnected } = useWalletContext();
-  const createDealHook = useCreateDeal();
+  const signDealHook = useSignDeal();
   const [currentStep, setCurrentStep] = useState(0);
   const [role, setRole] = useState<'buyer' | 'seller'>('buyer');
   const [counterparty, setCounterparty] = useState('');
@@ -30,6 +31,7 @@ export default function CreateDealPage() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   const [createdDealId, setCreatedDealId] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
@@ -58,62 +60,70 @@ export default function CreateDealPage() {
     }
 
     setIsSubmitting(true);
-    const toastId = toast.loading('🔐 Sign transaction in MetaMask to lock escrow...', {
+    setIsSuccess(false);
+    toast.dismiss(); // dismiss any overlaps
+    const toastId = toast.loading('🔐 Sign typed data to propose the deal...', {
       style: { 
-        background: 'rgba(255, 255, 255, 0.04)', 
-        color: '#E0E0FF', 
-        border: '1px solid rgba(255, 255, 255, 0.08)', 
-        backdropFilter: 'blur(20px)',
-        fontFamily: 'Space Grotesk, sans-serif', 
-        fontSize: '13px' 
+        background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' 
       },
     });
+
+    const hardTimeout = setTimeout(() => {
+      toast.dismiss(toastId);
+      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
+    }, 3000);
 
     try {
       const buyer = role === 'buyer' ? walletAddress : (counterparty || '0x0000000000000000000000000000000000000000');
       const seller = role === 'seller' ? walletAddress : (counterparty || '0x0000000000000000000000000000000000000000');
-      const sellerAddr = role === 'buyer' ? (counterparty || '0x0000000000000000000000000000000000000000') : walletAddress;
 
       const lastDeadline = milestones
         .filter(m => m.deadline)
         .map(m => new Date(m.deadline))
         .sort((a, b) => b.getTime() - a.getTime())[0] || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-      const result = await createDealHook.execute(
-        {
-          buyer,
-          seller,
-          value: parseFloat(amount) || 0,
-          token,
-          status: 'active',
-          description,
-          deadline: lastDeadline,
-          createdAt: new Date(),
-          milestones: milestones.map(m => ({
-            title: m.title || 'Untitled Milestone',
-            percentage: m.percentage,
-            status: 'pending' as const,
-            deadline: m.deadline ? new Date(m.deadline) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-          })),
-        },
-        sellerAddr,
-        amount || '0'
-      );
+      const dealId = `#${Math.floor(4800 + Math.random() * 200)}`;
 
+      // 1. Create deal in DB
+      await indexCreateDeal({
+        id: dealId,
+        buyer,
+        seller,
+        value: parseFloat(amount) || 0,
+        token,
+        status: 'pending_signatures',
+        description,
+        deadline: lastDeadline,
+        createdAt: new Date(),
+        milestones: milestones.map(m => ({
+          title: m.title || 'Untitled Milestone',
+          percentage: m.percentage,
+          status: 'pending' as const,
+          deadline: m.deadline ? new Date(m.deadline) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        })),
+      });
+
+      // 2. Sign the data (also saves signature to DB via hook)
+      const signature = await signDealHook.execute(dealId, amount || '0', buyer, seller, role);
+
+      clearTimeout(hardTimeout);
       toast.dismiss(toastId);
-      setTxHash(result?.txHash || null);
-      setCreatedDealId(result?.dealId || null);
+      
+      setTxHash(signature);
+      setCreatedDealId(dealId);
+      setIsSuccess(true); 
       setIsSubmitting(false);
 
       setTimeout(() => {
         router.push('/dashboard');
-      }, 4000);
+      }, 3000);
     } catch (err) {
+      clearTimeout(hardTimeout);
       console.error(err);
       toast.dismiss(toastId);
-      const errorMsg = err instanceof Error && err.message.includes('User rejected')
-        ? 'Transaction rejected by user.'
-        : 'Failed to create deal on-chain.';
+      const errorMsg = err instanceof Error && err.message.includes('rejected')
+        ? 'Signature rejected by user.'
+        : 'Failed to create deal off-chain.';
       toast.error(errorMsg, {
         style: { 
           background: 'rgba(255, 255, 255, 0.04)', 
@@ -139,21 +149,21 @@ export default function CreateDealPage() {
             <div className="w-24 h-24 bg-brand-teal/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-brand-teal/30 shadow-[0_0_30px_rgba(0,229,195,0.2)]">
               <span className="text-4xl text-brand-teal">✓</span>
             </div>
-            <h1 className="font-sans text-4xl font-bold text-[#E0E0FF] tracking-tight mb-3">DEAL LIVE</h1>
-            <p className="font-mono text-[11px] text-[#B0B0E0] opacity-60 uppercase tracking-[0.2em] mb-10">Funds successfully locked in protocol escrow</p>
+            <h1 className="font-sans text-4xl font-bold text-[#E0E0FF] tracking-tight mb-3">DEAL PROPOSED</h1>
+            <p className="font-mono text-[11px] text-[#B0B0E0] opacity-60 uppercase tracking-[0.2em] mb-10">Awaiting counterparty signature</p>
             <div className="glass p-8 max-w-lg mx-auto mb-10 text-left space-y-4 border-brand-teal/20">
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                 <span className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Deal Reference</span>
                 <p className="font-mono text-sm text-brand-teal font-bold">{createdDealId}</p>
               </div>
               <div className="flex justify-between items-center pt-2">
-                <span className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Transaction Hash</span>
+                <span className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Your Signature</span>
                 <p className="font-mono text-xs text-[#E0E0FF]/80 truncate max-w-[200px]">{txHash}</p>
               </div>
             </div>
             <div className="flex items-center justify-center gap-3">
               <div className="w-2 h-2 rounded-full bg-brand-teal pulse-dot" />
-              <p className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Protocol confirmed — Syncing dashboard</p>
+              <p className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Redirecting to dashboard in 3 seconds...</p>
             </div>
           </div>
         ) : (
@@ -407,10 +417,14 @@ export default function CreateDealPage() {
 
                 <button
                   onClick={handleSign}
-                  disabled={isSubmitting}
-                  className="w-full py-5 rounded-2xl bg-gradient-to-r from-brand-teal to-[#8B85FF] text-[#060612] font-sans text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-brand-teal/20 disabled:opacity-50 disabled:scale-100 disabled:shadow-none uppercase tracking-widest"
+                  disabled={isSubmitting || isSuccess}
+                  className={`w-full py-5 rounded-2xl font-sans text-sm font-bold transition-all shadow-xl disabled:scale-100 uppercase tracking-widest ${
+                    isSuccess 
+                      ? 'bg-brand-teal text-[#060612] shadow-brand-teal/20' 
+                      : 'bg-gradient-to-r from-brand-teal to-[#8B85FF] text-[#060612] hover:scale-[1.02] active:scale-[0.98] shadow-brand-teal/20 disabled:opacity-50 disabled:shadow-none'
+                  }`}
                 >
-                  {isSubmitting ? 'GENERATING PROTOCOL...' : 'EXECUTE & LOCK ESCROW'}
+                  {isSuccess ? 'DEAL SENT ✓' : isSubmitting ? 'PROPOSING DEAL...' : 'SIGN & PROPOSE DEAL'}
                 </button>
               </div>
             )}

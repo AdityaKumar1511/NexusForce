@@ -46,7 +46,6 @@ export default function GovernancePage() {
     nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
   });
   const [votedProposals, setVotedProposals] = useState<Record<string, 'for' | 'against'>>({});
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub1 = subscribeToProposals((p) => {
@@ -54,7 +53,6 @@ export default function GovernancePage() {
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setProposals(unique);
-      setLoading(false);
     });
     const unsub2 = subscribeToJurorStats(setJurorStats);
     
@@ -118,13 +116,7 @@ export default function GovernancePage() {
         <div className="space-y-6">
           <h2 className="font-mono text-[10px] font-bold text-[#6060A0] tracking-[0.2em] mb-4 uppercase">PROPOSALS</h2>
           
-          {loading && (
-            <div className="py-12 glass text-center">
-              <p className="font-mono text-[10px] text-[#6060A0] animate-pulse uppercase tracking-widest">Hydrating proposals from chain...</p>
-            </div>
-          )}
-
-          {!loading && proposals.length === 0 && (
+          {proposals.length === 0 && (
             <div className="py-12 glass text-center border-dashed border-white/5">
               <p className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest">No active proposals — Protocol stable.</p>
             </div>

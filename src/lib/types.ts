@@ -6,12 +6,14 @@ export interface Deal {
   seller: string;
   value: number;
   token: string;
-  status: 'active' | 'in_dispute' | 'pending_signature' | 'completed' | 'voting';
+  status: 'active' | 'in_dispute' | 'pending_signatures' | 'confirmed' | 'completed' | 'voting';
   milestones: Milestone[];
   deadline: Date;
   createdAt: Date;
   description: string;
   txHash?: string;
+  buyerSignature?: string;
+  sellerSignature?: string;
 }
 
 export interface Milestone {
