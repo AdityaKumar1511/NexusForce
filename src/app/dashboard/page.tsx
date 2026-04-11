@@ -14,7 +14,7 @@ import {
   subscribeToJurorStats,
   hasSeeded,
 } from '@/lib/firebaseService';
-import { useCompleteDeal, useSignDeal } from '@/hooks/useContractActions';
+import { useSignDeal } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
 import { seedFirestore } from '@/lib/seedData';
 import type { Deal, Dispute, ActivityEvent, JurorStats } from '@/lib/types';
@@ -65,11 +65,11 @@ export default function DashboardPage() {
     reputationScore: 847, maxReputation: 1000, percentile: 12,
     nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
   });
-  const [confirmingDeal, setConfirmingDeal] = useState<string | null>(null);
+
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
 
   // ─── On-chain deal completion hook ─────────────────────────
-  const completeDealHook = useCompleteDeal();
+
   const signDealHook = useSignDeal();
 
   useEffect(() => {
@@ -107,71 +107,7 @@ export default function DashboardPage() {
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
-  const handleConfirmDeal = async (dealId: string) => {
-    if (!isConnected) {
-      toast.error('Connect your wallet first to sign transactions.', {
-        style: {
-          background: 'rgba(255, 255, 255, 0.04)',
-          color: '#EF4444',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '13px'
-        },
-      });
-      return;
-    }
 
-    setConfirmingDeal(dealId);
-    toast.dismiss();
-    const toastId = toast.loading(`🔐 Sign transaction to release funds for ${dealId}...`, {
-      style: {
-        background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px'
-      },
-    });
-
-    const hardTimeout = setTimeout(() => {
-      toast.dismiss(toastId);
-      toast.loading('Pending confirmation...', { id: toastId, duration: 2000, style: { background: 'rgba(255, 255, 255, 0.04)', color: '#E0E0FF', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }});
-    }, 3000);
-
-    try {
-      await completeDealHook.execute(dealId);
-      clearTimeout(hardTimeout);
-      toast.dismiss(toastId);
-      toast.success(`✓ DEAL ${dealId} COMPLETED — Funds released on-chain!`, {
-        style: {
-          background: 'rgba(255, 255, 255, 0.04)',
-          color: '#00E5C3',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '13px'
-        },
-        iconTheme: { primary: '#00E5C3', secondary: '#060612' },
-        duration: 5000,
-      });
-    } catch (err) {
-      clearTimeout(hardTimeout);
-      console.error(err);
-      toast.dismiss(toastId);
-      const errorMsg = err instanceof Error && err.message.includes('User rejected')
-        ? 'Transaction rejected by user.'
-        : 'Failed to complete deal on-chain.';
-      toast.error(errorMsg, {
-        style: {
-          background: 'rgba(255, 255, 255, 0.04)',
-          color: '#EF4444',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '13px'
-        },
-      });
-    } finally {
-      setConfirmingDeal(null);
-    }
-  };
 
   const handleSignDeal = async (deal: Deal) => {
     if (!isConnected || !walletAddress) {
@@ -187,7 +123,7 @@ export default function DashboardPage() {
       });
       return;
     }
-    setConfirmingDeal(deal.id);
+
     toast.dismiss();
     const toastId = toast.loading(`🔐 Sign typed data to confirm ${deal.id}...`, {
       style: {
@@ -238,7 +174,7 @@ export default function DashboardPage() {
         },
       });
     } finally {
-      setConfirmingDeal(null);
+
     }
   };
 
@@ -356,21 +292,11 @@ export default function DashboardPage() {
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Action</span>
                 <div className="flex items-center lg:justify-end gap-2 min-w-[160px]">
-                  {deal.status === 'active' && (
-                    <button
-                      onClick={() => handleConfirmDeal(deal.id)}
-                      disabled={confirmingDeal === deal.id}
-                      className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-brand-teal/10 border border-brand-teal/30 text-brand-teal hover:bg-brand-teal/20 transition-all disabled:opacity-50"
-                    >
-                      {confirmingDeal === deal.id ? '...' : 'CONFIRM ON-CHAIN'}
-                    </button>
-                  )}
                   {deal.status === 'pending_signatures' && (
                     <button onClick={() => handleSignDeal(deal)}
-                      disabled={confirmingDeal === deal.id}
                       className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-brand-amber/10 border border-brand-amber/30 text-brand-amber hover:bg-brand-amber/20 transition-all disabled:opacity-50"
                     >
-                      {confirmingDeal === deal.id ? '...' : 'AWAITING COUNTERPARTY'}
+                      AWAITING COUNTERPARTY
                     </button>
                   )}
                   {deal.status === 'in_dispute' && dispute && (

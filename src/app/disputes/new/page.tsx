@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { getDeals } from '@/lib/firebaseService';
+import { subscribeToDeals } from '@/lib/firebaseService';
 import { useRaiseDispute } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
 import type { Deal } from '@/lib/types';
@@ -10,6 +10,30 @@ import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
 const disputeReasons = ['WORK NOT DELIVERED', 'QUALITY BELOW SPEC', 'MISSED DEADLINE', 'PAYMENT REFUSED', 'OTHER'];
+
+const INITIAL_DEALS: Deal[] = [
+  {
+    id: '#4821', buyer: '0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a',
+    seller: '0x7E2c9D3B1A4F8C6E5D0B7A9F2C1E8D3B4A5F6C7D',
+    value: 2400, token: 'USDC', status: 'in_dispute',
+    description: 'Full-stack DeFi dashboard with analytics panel',
+    milestones: [], deadline: new Date(), createdAt: new Date()
+  },
+  {
+    id: '#4820', buyer: '0x1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B',
+    seller: '0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a',
+    value: 890, token: 'USDC', status: 'completed',
+    description: 'Smart contract audit for NFT marketplace',
+    milestones: [], deadline: new Date(), createdAt: new Date()
+  },
+  {
+    id: '#4819', buyer: '0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a',
+    seller: '0x9B8A7C6D5E4F3A2B1C0D9E8F7A6B5C4D3E2F1A0B',
+    value: 5500, token: 'USDC', status: 'active',
+    description: 'Custom ERC-721 collection with generative art engine',
+    milestones: [], deadline: new Date(), createdAt: new Date()
+  },
+];
 
 const generateCID = () => `Qm${Math.random().toString(36).slice(2, 14)}${Math.random().toString(36).slice(2, 14)}`;
 const generateJurorAddr = () => `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`;
@@ -34,7 +58,7 @@ export default function DisputeFilingPage() {
   const router = useRouter();
   const { address: walletAddress, isConnected } = useWalletContext();
   const raiseDisputeHook = useRaiseDispute();
-  const [deals, setDeals] = useState<Deal[]>([]);
+  const [deals, setDeals] = useState<Deal[]>(INITIAL_DEALS);
   const [selectedDeal, setSelectedDeal] = useState('');
   const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
   const [description, setDescription] = useState('');
@@ -49,7 +73,15 @@ export default function DisputeFilingPage() {
   const vrfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getDeals().then(d => setDeals(d));
+    const unsub = subscribeToDeals((firestoreDeals) => {
+      const merged = [...firestoreDeals, ...INITIAL_DEALS];
+      const unique = Array.from(
+        new Map(merged.map(d => [d.id, d])).values()
+      );
+      unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      setDeals(unique);
+    });
+    return () => unsub();
   }, []);
 
   const toggleReason = (reason: string) => {

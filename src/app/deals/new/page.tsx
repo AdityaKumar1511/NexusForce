@@ -112,10 +112,11 @@ export default function CreateDealPage() {
       setTxHash(signature);
       setCreatedDealId(dealId);
       setIsSuccess(true); 
+      setIsSubmitting(false);
 
       setTimeout(() => {
         router.push('/dashboard');
-      }, 1500);
+      }, 3000);
     } catch (err) {
       clearTimeout(hardTimeout);
       console.error(err);
@@ -162,7 +163,7 @@ export default function CreateDealPage() {
             </div>
             <div className="flex items-center justify-center gap-3">
               <div className="w-2 h-2 rounded-full bg-brand-teal pulse-dot" />
-              <p className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Protocol confirmed — Syncing dashboard</p>
+              <p className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest font-bold">Redirecting to dashboard in 3 seconds...</p>
             </div>
           </div>
         ) : (
