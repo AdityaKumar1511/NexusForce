@@ -446,29 +446,31 @@ export function subscribeToGlobalStats(callback: (stats: GlobalStats) => void): 
 
 // ─── JUROR STATS ─────────────────────────────────────────────────
 
+export async function updateJurorStats(updates: Partial<JurorStats>, walletAddress?: string): Promise<void> {
+  const id = walletAddress || 'default';
+  const ref = doc(db, 'jurorStats', id);
+  // Using merge: true prevents the need to fetch first, and avoids full document overwrites
+  await setDoc(ref, updates, { merge: true });
+}
+
 export async function getJurorStats(walletAddress?: string): Promise<JurorStats> {
   const id = walletAddress || 'default';
   const ref = doc(db, 'jurorStats', id);
   const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      return {
-        casesHandled: 24, majorityVotes: 21, accuracyRate: 87.5, totalEarned: 124.5,
-        reputationScore: 847, maxReputation: 1000, percentile: 12,
-        nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
-      };
-    }
-  const data = snap.data();
+  const data = snap.exists() ? snap.data() : {};
+  
   return {
-    casesHandled: data.casesHandled || 0,
-    majorityVotes: data.majorityVotes || 0,
-    accuracyRate: data.accuracyRate || 0,
-    totalEarned: data.totalEarned || 0,
-    reputationScore: data.reputationScore || 0,
-    maxReputation: data.maxReputation || 1000,
-    percentile: data.percentile || 100,
-    nxfStaked: data.nxfStaked || 0,
-    nxfBalance: data.nxfBalance || 0,
-    reputationHistory: data.reputationHistory || [],
+    casesHandled: data.casesHandled ?? 24,
+    majorityVotes: data.majorityVotes ?? 21,
+    accuracyRate: data.accuracyRate ?? 87.5,
+    totalEarned: data.totalEarned ?? 124.5,
+    reputationScore: data.reputationScore ?? 847,
+    maxReputation: data.maxReputation ?? 1000,
+    percentile: data.percentile ?? 12,
+    nxfStaked: data.nxfStaked ?? 500,
+    nxfBalance: data.nxfBalance ?? 847.5,
+    reputationHistory: data.reputationHistory ?? [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
+    delegatedTo: data.delegatedTo ?? null,
   };
 }
 
@@ -476,26 +478,19 @@ export function subscribeToJurorStats(callback: (stats: JurorStats) => void, wal
   const id = walletAddress || 'default';
   const ref = doc(db, 'jurorStats', id);
   return onSnapshot(ref, snap => {
-    if (!snap.exists()) {
-      callback({
-        casesHandled: 24, majorityVotes: 21, accuracyRate: 87.5, totalEarned: 124.5,
-        reputationScore: 847, maxReputation: 1000, percentile: 12,
-        nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
-      });
-      return;
-    }
-    const data = snap.data();
+    const data = snap.exists() ? snap.data() : {};
     callback({
-      casesHandled: data.casesHandled || 0,
-      majorityVotes: data.majorityVotes || 0,
-      accuracyRate: data.accuracyRate || 0,
-      totalEarned: data.totalEarned || 0,
-      reputationScore: data.reputationScore || 0,
-      maxReputation: data.maxReputation || 1000,
-      percentile: data.percentile || 100,
-      nxfStaked: data.nxfStaked || 0,
-      nxfBalance: data.nxfBalance || 0,
-      reputationHistory: data.reputationHistory || [],
+      casesHandled: data.casesHandled ?? 24,
+      majorityVotes: data.majorityVotes ?? 21,
+      accuracyRate: data.accuracyRate ?? 87.5,
+      totalEarned: data.totalEarned ?? 124.5,
+      reputationScore: data.reputationScore ?? 847,
+      maxReputation: data.maxReputation ?? 1000,
+      percentile: data.percentile ?? 12,
+      nxfStaked: data.nxfStaked ?? 500,
+      nxfBalance: data.nxfBalance ?? 847.5,
+      reputationHistory: data.reputationHistory ?? [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
+      delegatedTo: data.delegatedTo ?? null,
     });
   });
 }

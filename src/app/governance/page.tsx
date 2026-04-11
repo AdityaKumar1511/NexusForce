@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { subscribeToProposals, subscribeToJurorStats, voteOnProposal, hasSeeded } from '@/lib/firebaseService';
+import { subscribeToProposals, subscribeToJurorStats, updateJurorStats, voteOnProposal, hasSeeded } from '@/lib/firebaseService';
+import { useWalletContext } from '@/providers/WalletProvider';
 import { seedFirestore } from '@/lib/seedData';
 import type { Proposal, JurorStats } from '@/lib/types';
 import toast from 'react-hot-toast';
@@ -39,6 +40,7 @@ const INITIAL_PROPOSALS: Proposal[] = [
 ];
 
 export default function GovernancePage() {
+  const { address: walletAddress } = useWalletContext();
   const [proposals, setProposals] = useState<Proposal[]>(INITIAL_PROPOSALS);
   const [jurorStats, setJurorStats] = useState<JurorStats>({
     casesHandled: 24, majorityVotes: 21, accuracyRate: 87.5, totalEarned: 124.5,
@@ -46,6 +48,10 @@ export default function GovernancePage() {
     nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
   });
   const [votedProposals, setVotedProposals] = useState<Record<string, 'for' | 'against'>>({});
+  const [isStakeModalOpen, setIsStakeModalOpen] = useState(false);
+  const [stakeAmountInput, setStakeAmountInput] = useState('');
+  const [isDelegationModalOpen, setIsDelegationModalOpen] = useState(false);
+  const [delegationInput, setDelegationInput] = useState('');
 
   useEffect(() => {
     const unsub1 = subscribeToProposals((p) => {
@@ -54,8 +60,8 @@ export default function GovernancePage() {
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setProposals(unique);
     });
-    const unsub2 = subscribeToJurorStats(setJurorStats);
-    
+    const unsub2 = subscribeToJurorStats(setJurorStats, walletAddress ?? undefined);
+
     let isSeeding = false;
     const checkAndSeed = async () => {
       if (isSeeding) return;
@@ -72,33 +78,59 @@ export default function GovernancePage() {
     checkAndSeed();
 
     return () => { unsub1(); unsub2(); };
-  }, []);
+  }, [walletAddress]);
+
+  const handleIncrementStake = async () => {
+    const amount = Number(stakeAmountInput);
+    if (isNaN(amount) || amount <= 0 || amount > jurorStats.nxfBalance) {
+      toast.error('Invalid amount or insufficient balance.', { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' } });
+      return;
+    }
+    try {
+      await updateJurorStats({ nxfStaked: jurorStats.nxfStaked + amount, nxfBalance: jurorStats.nxfBalance - amount }, walletAddress ?? undefined);
+      toast.success(`Successfully staked ${amount} NXF!`, { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#00E5C3', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }, iconTheme: { primary: '#00E5C3', secondary: '#060612' } });
+      setIsStakeModalOpen(false);
+      setStakeAmountInput('');
+    } catch (err) {
+      toast.error('Failed to update stake.', { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' } });
+    }
+  };
+
+  const handleUpdateDelegation = async () => {
+    try {
+      await updateJurorStats({ delegatedTo: delegationInput.trim() !== '' ? delegationInput.trim() : null }, walletAddress ?? undefined);
+      toast.success('Delegation updated successfully!', { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#00E5C3', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' }, iconTheme: { primary: '#00E5C3', secondary: '#060612' } });
+      setIsDelegationModalOpen(false);
+    } catch (err) {
+      toast.error('Failed to update delegation.', { style: { background: 'rgba(255, 255, 255, 0.04)', color: '#EF4444', border: '1px solid rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(20px)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px' } });
+    }
+  };
 
   const handleVote = async (proposalId: string, vote: 'for' | 'against') => {
     try {
       await voteOnProposal(proposalId, vote);
       setVotedProposals(prev => ({ ...prev, [proposalId]: vote }));
       toast.success(`Vote recorded: ${vote.toUpperCase()} on ${proposalId}`, {
-        style: { 
-          background: 'rgba(255, 255, 255, 0.04)', 
-          color: '#E0E0FF', 
-          border: '1px solid rgba(255, 255, 255, 0.08)', 
+        style: {
+          background: 'rgba(255, 255, 255, 0.04)',
+          color: '#E0E0FF',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif', 
-          fontSize: '13px' 
+          fontFamily: 'Space Grotesk, sans-serif',
+          fontSize: '13px'
         },
         iconTheme: { primary: '#00E5C3', secondary: '#060612' },
       });
     } catch (err) {
       console.error(err);
       toast.error('Failed to record vote.', {
-        style: { 
-          background: 'rgba(255, 255, 255, 0.04)', 
-          color: '#EF4444', 
-          border: '1px solid rgba(255, 255, 255, 0.08)', 
+        style: {
+          background: 'rgba(255, 255, 255, 0.04)',
+          color: '#EF4444',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           backdropFilter: 'blur(20px)',
-          fontFamily: 'Space Grotesk, sans-serif', 
-          fontSize: '13px' 
+          fontFamily: 'Space Grotesk, sans-serif',
+          fontSize: '13px'
         },
       });
     }
@@ -115,31 +147,30 @@ export default function GovernancePage() {
         {/* Left: Proposals */}
         <div className="space-y-6">
           <h2 className="font-mono text-[10px] font-bold text-[#6060A0] tracking-[0.2em] mb-4 uppercase">PROPOSALS</h2>
-          
+
           {proposals.length === 0 && (
             <div className="py-12 glass text-center border-dashed border-white/5">
               <p className="font-mono text-[10px] text-[#6060A0] uppercase tracking-widest">No active proposals — Protocol stable.</p>
             </div>
           )}
-          
+
           {proposals.map((proposal, i) => (
             <div key={proposal.id} className="glass p-8 group relative overflow-hidden transition-all hover:bg-white/[0.06] opacity-0 animate-fade-in" style={{ animationDelay: `${i * 100}ms` }}>
               <div className="flex items-start justify-between gap-6 mb-4 relative z-10">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
                     <span className="font-mono text-[11px] text-brand-teal font-bold">{proposal.id}</span>
-                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${
-                      proposal.status === 'active' ? 'bg-brand-amber/10 border-brand-amber/20 text-brand-amber' :
+                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${proposal.status === 'active' ? 'bg-brand-amber/10 border-brand-amber/20 text-brand-amber' :
                       proposal.status === 'passed' ? 'bg-brand-teal/10 border-brand-teal/20 text-brand-teal' :
-                      'bg-brand-pink/10 border-brand-pink/20 text-brand-pink'
-                    }`}>
+                        'bg-brand-pink/10 border-brand-pink/20 text-brand-pink'
+                      }`}>
                       {proposal.status.toUpperCase()}
                     </span>
                   </div>
                   <h3 className="font-sans text-lg font-bold text-[#E0E0FF] tracking-tight group-hover:text-brand-purple transition-colors">{proposal.title}</h3>
                 </div>
               </div>
-              
+
               <p className="font-sans text-sm text-[#B0B0E0] leading-relaxed mb-6 opacity-80 group-hover:opacity-100 transition-opacity italic">{proposal.description}</p>
 
               {/* Vote Tally */}
@@ -202,9 +233,8 @@ export default function GovernancePage() {
                   </>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-widest ${
-                      proposal.status === 'passed' ? 'text-brand-teal' : 'text-brand-pink'
-                    }`}>
+                    <span className={`font-mono text-[10px] font-bold uppercase tracking-widest ${proposal.status === 'passed' ? 'text-brand-teal' : 'text-brand-pink'
+                      }`}>
                       {proposal.status === 'passed' ? 'Execution Pending' : 'Proposal Rejected'}
                     </span>
                     <span className="w-1 h-1 rounded-full bg-white/20" />
@@ -220,10 +250,10 @@ export default function GovernancePage() {
         {/* Right: Voting Power */}
         <div className="space-y-6">
           <h2 className="font-mono text-[10px] font-bold text-[#6060A0] tracking-[0.2em] mb-4 uppercase">YOUR VOICE</h2>
-          
+
           <div className="glass p-8 space-y-8 sticky top-24 border-brand-purple/20 overflow-hidden relative group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-brand-purple/5 rounded-full blur-[60px] -mr-16 -mt-16 group-hover:bg-brand-purple/10 transition-all duration-700 pointer-events-none" />
-            
+
             <div className="relative z-10">
               <p className="font-mono text-[9px] text-[#6060A0] font-bold uppercase tracking-widest mb-2">NXF Balance</p>
               <p className="font-sans text-3xl font-bold text-brand-amber tracking-tighter">{jurorStats.nxfBalance}</p>
@@ -238,7 +268,7 @@ export default function GovernancePage() {
                 <div className="h-full bg-brand-teal rounded-full shadow-[0_0_10px_rgba(0,229,195,0.3)]" style={{ width: '100%' }} />
               </div>
             </div>
-            
+
             <div className="relative z-10 border-t border-white/5 pt-6">
               <p className="font-mono text-[9px] text-[#6060A0] font-bold uppercase tracking-widest mb-3">REPUTATION STANDING</p>
               <div className="flex items-center gap-4 mb-3">
@@ -254,22 +284,112 @@ export default function GovernancePage() {
               <p className="font-mono text-[9px] text-[#6060A0] font-bold uppercase tracking-widest mb-3">DELEGATION IDENTITY</p>
               <div className="flex items-center gap-2 px-3 py-2 bg-brand-teal/5 border border-brand-teal/20 rounded-xl">
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-teal" />
-                <span className="font-mono text-[10px] text-brand-teal font-bold uppercase tracking-widest">Self-Delegated (Active)</span>
+                <span className="font-mono text-[10px] text-brand-teal font-bold uppercase tracking-widest">
+                  {jurorStats.delegatedTo ? `Delegated to: ${jurorStats.delegatedTo.slice(0, 6)}...${jurorStats.delegatedTo.slice(-4)}` : 'Self-Delegated (Active)'}
+                </span>
               </div>
             </div>
 
             {/* Actions */}
             <div className="relative z-10 space-y-3 pt-4">
-              <button className="w-full py-4 rounded-xl bg-gradient-to-r from-brand-teal to-brand-purple text-[#060612] text-[10px] font-mono font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-brand-teal/10 uppercase tracking-widest">
+              <button 
+                onClick={() => setIsStakeModalOpen(true)} 
+                className="w-full py-4 rounded-xl bg-gradient-to-r from-brand-teal to-brand-purple text-[#060612] text-[10px] font-mono font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-brand-teal/10 uppercase tracking-widest"
+              >
                 Increment Stake
               </button>
-              <button className="w-full py-4 rounded-xl bg-white/5 text-[#B0B0E0] text-[10px] font-mono font-bold border border-white/10 hover:bg-white/10 transition-all uppercase tracking-widest">
+              <button 
+                onClick={() => {
+                  setDelegationInput(jurorStats.delegatedTo || '');
+                  setIsDelegationModalOpen(true);
+                }} 
+                className="w-full py-4 rounded-xl bg-white/5 text-[#B0B0E0] text-[10px] font-mono font-bold border border-white/10 hover:bg-white/10 transition-all uppercase tracking-widest"
+              >
                 Update Delegation
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {isStakeModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#060612]/90 backdrop-blur-md animate-fade-in">
+          <div className="glass w-full max-w-sm rounded-3xl overflow-hidden border-brand-teal/20 relative animate-slide-up">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-teal to-brand-purple" />
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div>
+                <h2 className="font-sans text-xl font-bold text-[#E0E0FF] tracking-tight uppercase">INCREMENT STAKE</h2>
+                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest mt-1">Increase Voting Power</p>
+              </div>
+              <button onClick={() => setIsStakeModalOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-[#6060A0] hover:text-white hover:bg-white/10 transition-all text-xl">
+                ×
+              </button>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="font-mono text-[10px] text-[#6060A0] font-bold uppercase tracking-widest mb-3 block">AMOUNT (NXF)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={stakeAmountInput}
+                    onChange={(e) => setStakeAmountInput(e.target.value)}
+                    placeholder="Enter amount to stake"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-sans text-sm outline-none focus:border-brand-teal/50 transition-colors"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 font-mono text-[10px] text-[#6060A0]">
+                    MAX: {jurorStats.nxfBalance}
+                  </div>
+                </div>
+              </div>
+              
+              <button 
+                onClick={handleIncrementStake}
+                className="w-full py-4 rounded-xl bg-gradient-to-r from-brand-teal to-brand-purple text-[#060612] text-[10px] font-mono font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-brand-teal/10 uppercase tracking-widest"
+              >
+                Confirm Stake
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDelegationModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#060612]/90 backdrop-blur-md animate-fade-in">
+          <div className="glass w-full max-w-sm rounded-3xl overflow-hidden border-brand-teal/20 relative animate-slide-up">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-teal to-brand-purple" />
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div>
+                <h2 className="font-sans text-xl font-bold text-[#E0E0FF] tracking-tight uppercase">UPDATE DELEGATION</h2>
+                <p className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest mt-1">Delegate your voting power</p>
+              </div>
+              <button onClick={() => setIsDelegationModalOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-[#6060A0] hover:text-white hover:bg-white/10 transition-all text-xl">
+                ×
+              </button>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="font-mono text-[10px] text-[#6060A0] font-bold uppercase tracking-widest mb-3 block">DELEGATE ADDRESS</label>
+                <input
+                  type="text"
+                  value={delegationInput}
+                  onChange={(e) => setDelegationInput(e.target.value)}
+                  placeholder="Leave empty for Self-Delegation"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-sans text-sm outline-none focus:border-brand-teal/50 transition-colors"
+                />
+              </div>
+              
+              <button 
+                onClick={handleUpdateDelegation}
+                className="w-full py-4 rounded-xl bg-gradient-to-r from-brand-teal to-brand-purple text-[#060612] text-[10px] font-mono font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-brand-teal/10 uppercase tracking-widest"
+              >
+                Confirm Delegation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

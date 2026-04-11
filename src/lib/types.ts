@@ -99,6 +99,7 @@ export interface JurorStats {
   nxfStaked: number;
   nxfBalance: number;
   reputationHistory: number[];
+  delegatedTo?: string | null;
 }
 
 export interface GlobalStats {
