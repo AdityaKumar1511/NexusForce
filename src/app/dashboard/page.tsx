@@ -15,11 +15,15 @@ import {
   hasSeeded,
   subscribeToDealMessages,
   sendDealMessage,
+  submitMilestone,
+  approveMilestone,
+  rejectMilestone,
 } from '@/lib/firebaseService';
 import { useSignDeal } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
 import { seedFirestore } from '@/lib/seedData';
-import type { Deal, Dispute, ActivityEvent, JurorStats, DealMessage } from '@/lib/types';
+import type { Deal, Dispute, ActivityEvent, JurorStats, DealMessage, Milestone } from '@/lib/types';
+import CountdownTimer from '@/components/ui/CountdownTimer';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
@@ -73,6 +77,39 @@ export default function DashboardPage() {
   }, []);
 
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [submissionProof, setSubmissionProof] = useState('');
+  const [isSubmittingWork, setIsSubmittingWork] = useState(false);
+  const [revisionReason, setRevisionReason] = useState('');
+
+  const handleMilestoneSubmit = async (dealId: string, index: number) => {
+    if (!submissionProof) return toast.error('Please provide a proof hash or link');
+    setIsSubmittingWork(true);
+    try {
+      await submitMilestone(dealId, index, submissionProof);
+      toast.success('Work submitted for review!');
+      setSubmissionProof('');
+    } catch (err) {
+      toast.error('Submission failed');
+    } finally {
+      setIsSubmittingWork(false);
+    }
+  };
+
+  const handleMilestoneAction = async (dealId: string, index: number, action: 'approve' | 'reject') => {
+    try {
+      if (action === 'approve') {
+        await approveMilestone(dealId, index);
+        toast.success('Milestone approved & funds released');
+      } else {
+        if (!revisionReason) return toast.error('Please provide a reason for revision');
+        await rejectMilestone(dealId, index, revisionReason);
+        toast.success('Revision requested');
+        setRevisionReason('');
+      }
+    } catch (err) {
+      toast.error('Action failed');
+    }
+  };
   const [dealMessages, setDealMessages] = useState<DealMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isSendingMsg, setIsSendingMsg] = useState(false);
@@ -595,12 +632,119 @@ export default function DashboardPage() {
                             'bg-white/20'}`} />
                           <span className="font-sans text-xs text-[#E0E0FF] font-bold">{m.title}</span>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex flex-col items-end gap-1">
                           <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-[#060612] border border-white/10 text-[#B0B0E0]">{m.percentage}%</span>
+                          {m.status === 'under_review' && m.submittedAt && (
+                            <div className="flex items-center gap-1 opacity-80">
+                              <span className="text-[8px] font-mono text-brand-amber animate-pulse">●</span>
+                              <CountdownTimer 
+                                targetDate={new Date(m.submittedAt.getTime() + 72 * 60 * 60 * 1000)} 
+                                size="sm" 
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* DYNAMIC ACTIONS SECTION */}
+                <div className="pt-4 border-t border-white/5">
+                  {(() => {
+                    const isSeller = walletAddress?.toLowerCase() === selectedDeal.seller.toLowerCase();
+                    const isBuyer = walletAddress?.toLowerCase() === selectedDeal.buyer.toLowerCase();
+                    const activeMilestoneIndex = selectedDeal.milestones.findIndex(m => m.status === 'pending' || m.status === 'active' || m.status === 'rejected');
+                    const reviewMilestoneIndex = selectedDeal.milestones.findIndex(m => m.status === 'under_review');
+
+                    if (isSeller && activeMilestoneIndex !== -1) {
+                      const m = selectedDeal.milestones[activeMilestoneIndex];
+                      return (
+                        <div className="space-y-4">
+                          <div className="flex flex-col gap-2">
+                            <label className="font-mono text-[9px] text-[#6060A0] uppercase tracking-widest font-bold">Submit Work for: {m.title}</label>
+                            <input 
+                              type="text" 
+                              placeholder="IPFS Hash or Deliverable Link..."
+                              value={submissionProof}
+                              onChange={(e) => setSubmissionProof(e.target.value)}
+                              className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3 text-xs font-mono text-[#E0E0FF] focus:outline-none focus:border-brand-teal/50"
+                            />
+                          </div>
+                          <button 
+                            onClick={() => handleMilestoneSubmit(selectedDeal.id, activeMilestoneIndex)}
+                            disabled={isSubmittingWork}
+                            className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-teal/20 to-[#8B85FF]/20 border border-brand-teal/30 text-white font-sans text-xs font-bold hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50"
+                          >
+                            {isSubmittingWork ? 'SUBMITTING...' : 'SUBMIT FOR REVIEW'}
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    if (isBuyer && reviewMilestoneIndex !== -1) {
+                      const m = selectedDeal.milestones[reviewMilestoneIndex];
+                      return (
+                        <div className="space-y-4">
+                          <div className="bg-brand-amber/5 border border-brand-amber/20 rounded-xl p-4">
+                            <p className="text-[10px] text-brand-amber font-mono uppercase tracking-widest mb-2 font-bold flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-brand-amber animate-pulse" />
+                              Under Review: {m.title}
+                            </p>
+                            <p className="text-[10px] text-[#A0A0C0] leading-relaxed mb-3">Proof: <span className="text-brand-teal break-all">{m.submissionProof}</span></p>
+                            
+                            <div className="flex flex-col gap-2 mb-4">
+                              <textarea 
+                                placeholder="Reason for revision (only if rejecting)..."
+                                value={revisionReason}
+                                onChange={(e) => setRevisionReason(e.target.value)}
+                                className="w-full bg-black/20 border border-white/5 rounded-lg px-3 py-2 text-[10px] font-sans text-[#E0E0FF] h-16 focus:outline-none focus:border-brand-pink/30"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <button 
+                                onClick={() => handleMilestoneAction(selectedDeal.id, reviewMilestoneIndex, 'approve')}
+                                className="py-2.5 rounded-lg bg-brand-teal/10 border border-brand-teal/30 text-brand-teal font-sans text-[10px] font-bold hover:bg-brand-teal/20 transition-all"
+                              >
+                                APPROVE & RELEASE
+                              </button>
+                              <button 
+                                onClick={() => handleMilestoneAction(selectedDeal.id, reviewMilestoneIndex, 'reject')}
+                                className="py-2.5 rounded-lg bg-brand-pink/10 border border-brand-pink/30 text-brand-pink font-sans text-[10px] font-bold hover:bg-brand-pink/20 transition-all"
+                              >
+                                REQUEST REVISION
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (isSeller && reviewMilestoneIndex !== -1) {
+                      return (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                          <p className="text-[10px] text-[#A0A0C0] font-mono uppercase tracking-widest mb-3">Awaiting Buyer Review...</p>
+                          <div className="flex flex-col gap-2">
+                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                              <div className="h-full bg-brand-amber animate-pulse w-[40%]" />
+                            </div>
+                            <p className="text-[9px] text-[#6060A0] font-mono">Auto-release in ~72 hours if no action taken</p>
+                            
+                            {/* FAST-FORWARD FOR DEMO */}
+                            <button 
+                              onClick={() => handleMilestoneAction(selectedDeal.id, reviewMilestoneIndex, 'approve')}
+                              className="mt-2 py-1.5 px-3 rounded-lg border border-brand-teal/20 text-brand-teal text-[8px] font-mono hover:bg-brand-teal/10 transition-all uppercase tracking-widest font-bold"
+                            >
+                              ⚡ DEMO: Fast-Forward (Trigger Auto-Release)
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    return null;
+                  })()}
                 </div>
               </div>
 

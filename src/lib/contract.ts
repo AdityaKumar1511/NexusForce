@@ -19,16 +19,54 @@ export const NEXUS_ESCROW_ABI = [
     inputs: [
       { name: '_seller', type: 'address' },
       { name: '_dealId', type: 'string' },
+      { name: '_mTitles', type: 'string[]' },
+      { name: '_mPercentages', type: 'uint256[]' },
     ],
     outputs: [],
   },
-  // ── completeDeal ──
+  // ── submitMilestone ──
   {
-    name: 'completeDeal',
+    name: 'submitMilestone',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
       { name: '_dealId', type: 'string' },
+      { name: '_index', type: 'uint256' },
+      { name: '_proof', type: 'string' },
+    ],
+    outputs: [],
+  },
+  // ── approveMilestone ──
+  {
+    name: 'approveMilestone',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_dealId', type: 'string' },
+      { name: '_index', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  // ── triggerAutoApproval ──
+  {
+    name: 'triggerAutoApproval',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_dealId', type: 'string' },
+      { name: '_index', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+  // ── rejectMilestone ──
+  {
+    name: 'rejectMilestone',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_dealId', type: 'string' },
+      { name: '_index', type: 'uint256' },
+      { name: '_reason', type: 'string' },
     ],
     outputs: [],
   },
@@ -54,39 +92,6 @@ export const NEXUS_ESCROW_ABI = [
     ],
     outputs: [],
   },
-  // ── getDeal (view) ──
-  {
-    name: 'getDeal',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: '_dealId', type: 'string' },
-    ],
-    outputs: [
-      { name: 'buyer', type: 'address' },
-      { name: 'seller', type: 'address' },
-      { name: 'value', type: 'uint256' },
-      { name: 'status', type: 'uint8' },
-      { name: 'createdAt', type: 'uint256' },
-    ],
-  },
-  // ── getDispute (view) ──
-  {
-    name: 'getDispute',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: '_dealId', type: 'string' },
-    ],
-    outputs: [
-      { name: 'reason', type: 'string' },
-      { name: 'buyerVotes', type: 'uint256' },
-      { name: 'sellerVotes', type: 'uint256' },
-      { name: 'splitVotes', type: 'uint256' },
-      { name: 'totalVotes', type: 'uint256' },
-      { name: 'resolved', type: 'bool' },
-    ],
-  },
   // ── Events ──
   {
     name: 'DealCreated',
@@ -100,43 +105,21 @@ export const NEXUS_ESCROW_ABI = [
     ],
   },
   {
-    name: 'DealCompleted',
+    name: 'MilestoneSubmitted',
     type: 'event',
     inputs: [
       { name: 'dealHash', type: 'bytes32', indexed: true },
-      { name: 'dealId', type: 'string', indexed: false },
-      { name: 'seller', type: 'address', indexed: true },
-      { name: 'value', type: 'uint256', indexed: false },
-      { name: 'completedAt', type: 'uint256', indexed: false },
+      { name: 'milestoneIndex', type: 'uint256', indexed: false },
+      { name: 'proof', type: 'string', indexed: false },
     ],
   },
   {
-    name: 'DisputeRaised',
+    name: 'MilestoneApproved',
     type: 'event',
     inputs: [
       { name: 'dealHash', type: 'bytes32', indexed: true },
-      { name: 'dealId', type: 'string', indexed: false },
-      { name: 'raisedBy', type: 'address', indexed: true },
-      { name: 'reason', type: 'string', indexed: false },
-    ],
-  },
-  {
-    name: 'VoteSubmitted',
-    type: 'event',
-    inputs: [
-      { name: 'dealHash', type: 'bytes32', indexed: true },
-      { name: 'dealId', type: 'string', indexed: false },
-      { name: 'juror', type: 'address', indexed: true },
-      { name: 'vote', type: 'uint8', indexed: false },
-    ],
-  },
-  {
-    name: 'DisputeResolved',
-    type: 'event',
-    inputs: [
-      { name: 'dealHash', type: 'bytes32', indexed: true },
-      { name: 'dealId', type: 'string', indexed: false },
-      { name: 'outcome', type: 'uint8', indexed: false },
+      { name: 'milestoneIndex', type: 'uint256', indexed: false },
+      { name: 'amountReleased', type: 'uint256', indexed: false },
     ],
   },
 ] as const;
