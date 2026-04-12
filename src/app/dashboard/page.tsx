@@ -586,7 +586,13 @@ export default function DashboardPage() {
                     {selectedDeal.milestones.map((m, i) => (
                       <div key={i} className="flex justify-between items-center p-3 bg-white/[0.02] border border-white/5 rounded-xl">
                         <div className="flex items-center gap-3">
-                          <div className={`w-1.5 h-1.5 rounded-full ${m.status === 'completed' ? 'bg-brand-teal' : m.status === 'active' ? 'bg-brand-amber animate-pulse' : 'bg-white/20'}`} />
+                          <div className={`w-1.5 h-1.5 rounded-full ${
+                            m.status === 'completed' ? 'bg-brand-teal' : 
+                            m.status === 'under_review' ? 'bg-brand-amber animate-pulse' : 
+                            m.status === 'active' ? 'bg-brand-teal pulse-dot' : 
+                            m.status === 'rejected' ? 'bg-brand-pink' :
+                            m.status === 'auto_released' ? 'bg-[#8B85FF]' :
+                            'bg-white/20'}`} />
                           <span className="font-sans text-xs text-[#E0E0FF] font-bold">{m.title}</span>
                         </div>
                         <div className="text-right">
