@@ -25,6 +25,7 @@ import { seedFirestore } from '@/lib/seedData';
 import type { Deal, Dispute, ActivityEvent, JurorStats, DealMessage, Milestone } from '@/lib/types';
 import CountdownTimer from '@/components/ui/CountdownTimer';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 
 const INITIAL_DEALS: Deal[] = [
@@ -129,6 +130,16 @@ export default function DashboardPage() {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [dealMessages, selectedDeal]);
+
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const dealId = searchParams.get('deal');
+    if (dealId && deals.length > 0) {
+      const deal = deals.find(d => d.id === dealId);
+      if (deal) setSelectedDeal(deal);
+    }
+  }, [searchParams, deals]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
