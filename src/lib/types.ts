@@ -19,8 +19,11 @@ export interface Deal {
 export interface Milestone {
   title: string;
   percentage: number;
-  status: 'completed' | 'pending' | 'active';
+  status: 'completed' | 'pending' | 'active' | 'under_review' | 'rejected' | 'auto_released';
   deadline: Date;
+  submittedAt?: Date;
+  submissionProof?: string;
+  rejectionReason?: string;
 }
 
 export interface Dispute {
@@ -85,7 +88,7 @@ export interface ActivityEvent {
 export interface TimelineEvent {
   timestamp: Date;
   label: string;
-  status: 'completed' | 'active' | 'pending';
+  status: 'completed' | 'active' | 'pending' | 'under_review' | 'rejected' | 'auto_released';
 }
 
 export interface JurorStats {
