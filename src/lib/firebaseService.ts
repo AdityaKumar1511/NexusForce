@@ -25,7 +25,9 @@ import type {
   GraphNode,
   GraphLink,
   DealMessage,
+  Notification,
 } from './types';
+import { createNotification } from './notificationService';
 
 // ─── Collection References ───────────────────────────────────────
 const dealsCol = collection(db, 'deals');
@@ -79,6 +81,9 @@ function parseDeal(id: string, data: Record<string, unknown>): Deal {
       percentage: m.percentage as number,
       status: m.status as Milestone['status'],
       deadline: toDate(m.deadline),
+      submittedAt: m.submittedAt ? toDate(m.submittedAt) : undefined,
+      submissionProof: m.submissionProof as string | undefined,
+      rejectionReason: m.rejectionReason as string | undefined,
     })),
   };
 }
@@ -192,6 +197,15 @@ export async function createDeal(deal: Omit<Deal, 'id'> & { id?: string }): Prom
   // Update global stats
   await updateGlobalStats({ totalEscrowed: deal.value, dealsCreated: 1 });
 
+  // Notify seller
+  await createNotification({
+    recipient: deal.seller,
+    type: 'deal',
+    title: 'New Deal Proposal',
+    message: `You have a new deal proposal for $${deal.value.toLocaleString()} ${deal.token}.`,
+    link: `/dashboard?deal=${dealId}`,
+  });
+
   return dealId;
 }
 
@@ -251,6 +265,116 @@ export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller'
     dealId,
     timestamp: new Date(),
   });
+
+  // Notify counterparty
+  const recipient = role === 'buyer' ? currentDeal.seller : currentDeal.buyer;
+  await createNotification({
+    recipient,
+    type: 'deal',
+    title: 'Deal Signed',
+    message: `The ${role} has signed the deal ${dealId}.`,
+    link: `/dashboard?deal=${dealId}`,
+  });
+}
+
+// ─── MILESTONES ──────────────────────────────────────────────────
+
+export async function submitMilestone(dealId: string, index: number, proof: string): Promise<void> {
+  const ref = doc(db, 'deals', dealId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const deal = snap.data() as Deal;
+
+  const milestones = [...deal.milestones];
+  if (milestones[index]) {
+    milestones[index].status = 'under_review';
+    (milestones[index] as any).submittedAt = Timestamp.fromDate(new Date());
+    (milestones[index] as any).submissionProof = proof;
+  }
+
+  await updateDoc(ref, { milestones });
+
+  await addActivityEvent({
+    type: 'deal',
+    message: `DEAL ${dealId} · Milestone #${index + 1} submitted for review`,
+    dealId,
+    timestamp: new Date(),
+  });
+
+  // Notify buyer
+  await createNotification({
+    recipient: deal.buyer,
+    type: 'milestone',
+    title: 'Milestone Submitted',
+    message: `Seller submitted work for Milestone #${index + 1} of Deal ${dealId}.`,
+    link: `/dashboard?deal=${dealId}`,
+  });
+}
+
+export async function approveMilestone(dealId: string, index: number): Promise<void> {
+  const ref = doc(db, 'deals', dealId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const deal = snap.data() as Deal;
+
+  const milestones = [...deal.milestones];
+  if (milestones[index]) {
+    milestones[index].status = 'completed';
+  }
+
+  // Check if all completed
+  const allDone = milestones.every(m => m.status === 'completed');
+  const updates: any = { milestones };
+  if (allDone) updates.status = 'completed';
+
+  await updateDoc(ref, updates);
+
+  await addActivityEvent({
+    type: 'deal',
+    message: `DEAL ${dealId} · Milestone #${index + 1} approved by buyer`,
+    dealId,
+    timestamp: new Date(),
+  });
+
+  // Notify seller
+  await createNotification({
+    recipient: deal.seller,
+    type: 'milestone',
+    title: 'Milestone Approved',
+    message: `Buyer approved Milestone #${index + 1} of Deal ${dealId}. Funds released.`,
+    link: `/dashboard?deal=${dealId}`,
+  });
+}
+
+export async function rejectMilestone(dealId: string, index: number, reason: string): Promise<void> {
+  const ref = doc(db, 'deals', dealId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const deal = snap.data() as Deal;
+
+  const milestones = [...deal.milestones];
+  if (milestones[index]) {
+    milestones[index].status = 'rejected';
+    (milestones[index] as any).rejectionReason = reason;
+  }
+
+  await updateDoc(ref, { milestones });
+
+  await addActivityEvent({
+    type: 'deal',
+    message: `DEAL ${dealId} · Milestone #${index + 1} revision requested`,
+    dealId,
+    timestamp: new Date(),
+  });
+
+  // Notify seller
+  await createNotification({
+    recipient: deal.seller,
+    type: 'milestone',
+    title: 'Revision Requested',
+    message: `Buyer requested revisions for Milestone #${index + 1} of Deal ${dealId}. Reason: ${reason}`,
+    link: `/dashboard?deal=${dealId}`,
+  });
 }
 
 // ─── DISPUTES ────────────────────────────────────────────────────
@@ -287,6 +411,31 @@ export async function createDispute(dispute: Omit<Dispute, 'id'>): Promise<strin
     dealId: dispute.dealId,
     timestamp: new Date(),
   });
+
+  // Notify parties
+  const parties = [dispute.buyer, dispute.seller];
+  for (const recipient of parties) {
+    await createNotification({
+      recipient,
+      type: 'dispute',
+      title: 'Dispute Raised',
+      message: `A dispute has been raised for Deal ${dispute.dealId}. Action required.`,
+      link: `/governance`,
+    });
+  }
+
+  // Notify jurors
+  if (dispute.jurors) {
+    for (const juror of dispute.jurors) {
+      await createNotification({
+        recipient: juror.address,
+        type: 'juror',
+        title: 'Selected as Juror',
+        message: `You have been selected to adjudicate Dispute ${disputeId}.`,
+        link: `/governance`,
+      });
+    }
+  }
 
   return disputeId;
 }

@@ -135,3 +135,14 @@ export interface DealMessage {
   text: string;
   timestamp: Date;
 }
+
+export interface Notification {
+  id: string;
+  recipient: string;
+  type: 'deal' | 'dispute' | 'milestone' | 'juror' | 'system';
+  title: string;
+  message: string;
+  link?: string;
+  isRead: boolean;
+  timestamp: Date;
+}
