@@ -4,6 +4,15 @@
 
 ---
 
+## 🚀 Demo
+
+| Resource | Link |
+|---|---|
+| 🌐 Live App | [View Deployed App](https://nexus-force-4std.vercel.app/) |
+| 🎥 Demo Video | [Watch Demo](https://youtu.be/XXgUCyBP9_M) |
+
+---
+
 ## 👥 Team O(1)
 
 | Role | Name |
