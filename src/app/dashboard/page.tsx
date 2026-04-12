@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import StatCard from '@/components/ui/StatCard';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -60,7 +60,7 @@ const INITIAL_DISPUTES: Dispute[] = [
   }
 ];
 
-export default function DashboardPage() {
+function DashboardContent() {
   // ─── Live wallet from RainbowKit/MetaMask ──────────────────
   const { address: walletAddress, isConnected } = useWalletContext();
   const [mounted, setMounted] = useState(false);
@@ -830,5 +830,17 @@ export default function DashboardPage() {
         </div>
       )}
     </DashboardLayout>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-[#060612] font-mono text-brand-teal text-xs animate-pulse">
+        INITIALIZING NEURAL INTERFACE...
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }

@@ -46,16 +46,25 @@ export default function TopBar({ onOpenSidebar }: TopBarProps) {
 
   return (
     <header className="glass-navbar fixed top-0 right-0 left-0 lg:left-[240px] h-16 flex items-center justify-between lg:justify-end px-4 lg:px-6 z-30">
-      <button 
-        onClick={onOpenSidebar}
-        className="lg:hidden p-2 text-[#B0B0E0] hover:text-[#E0E0FF] transition-colors"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
+      <div className="flex items-center gap-3">
+        <button 
+          onClick={onOpenSidebar}
+          className="lg:hidden p-2 text-[#B0B0E0] hover:text-[#E0E0FF] transition-colors"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+
+        <div className="flex lg:hidden items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[#060612] border border-white/10 flex items-center justify-center overflow-hidden">
+            <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
+          </div>
+          <span className="font-sans text-[11px] font-black tracking-widest text-[#E0E0FF] uppercase">NEXUSFORCE</span>
+        </div>
+      </div>
 
       <div className="flex items-center gap-4">
         <NotificationHub />
