@@ -58,10 +58,10 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 glass-navbar">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-purple to-brand-teal flex items-center justify-center shadow-lg shadow-brand-purple/20">
-              <span className="font-sans text-xs font-bold text-white">NF</span>
+            <div className="w-9 h-9 rounded-lg bg-[#060612] border border-white/10 flex items-center justify-center overflow-hidden">
+              <img src="/logo.png" alt="NexusForce Logo" className="w-7 h-7 object-contain" />
             </div>
-            <span className="font-sans text-sm font-bold tracking-widest text-[#E0E0FF] hidden sm:block uppercase">NEXUSFORCE</span>
+            <span className="font-sans text-sm font-bold tracking-widest text-[#E0E0FF] hidden sm:block uppercase tracking-[0.2em]">NEXUSFORCE</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-[#B0B0E0] hover:text-[#E0E0FF] text-[10px] sm:text-xs font-mono transition-colors">
