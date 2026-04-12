@@ -26,15 +26,15 @@ import toast from 'react-hot-toast';
 const INITIAL_DEALS: Deal[] = [
   {
     id: '#4821', buyer: '0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a', seller: '0x7E2c9D3B1A4F8C6E5D0B7A9F2C1E8D3B4A5F6C7D', value: 2400, token: 'USDC', status: 'in_dispute', description: 'Full-stack DeFi dashboard with analytics panel and wallet integration',
-    milestones: [{ title: 'UI Design & Wireframes', percentage: 30, status: 'completed', deadline: new Date() }, { title: 'Frontend Development', percentage: 40, status: 'active', deadline: new Date() }, { title: 'Backend & Smart Contracts', percentage: 30, status: 'pending', deadline: new Date() }], deadline: new Date(), createdAt: new Date()
+    milestones: [{ title: 'UI Design & Wireframes', percentage: 30, status: 'completed', deadline: new Date('2024-04-10T12:00:00Z') }, { title: 'Frontend Development', percentage: 40, status: 'active', deadline: new Date('2024-05-15T12:00:00Z') }, { title: 'Backend & Smart Contracts', percentage: 30, status: 'pending', deadline: new Date('2024-06-01T12:00:00Z') }], deadline: new Date('2024-06-15T12:00:00Z'), createdAt: new Date('2024-04-01T12:00:00Z')
   },
   {
     id: '#4820', buyer: '0x1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B', seller: '0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a', value: 890, token: 'USDC', status: 'completed', description: 'Smart contract audit for NFT marketplace',
-    milestones: [{ title: 'Initial Audit Report', percentage: 50, status: 'completed', deadline: new Date() }, { title: 'Final Review & Sign-off', percentage: 50, status: 'completed', deadline: new Date() }], deadline: new Date(), createdAt: new Date()
+    milestones: [{ title: 'Initial Audit Report', percentage: 50, status: 'completed', deadline: new Date('2024-03-20T12:00:00Z') }, { title: 'Final Review & Sign-off', percentage: 50, status: 'completed', deadline: new Date('2024-03-25T12:00:00Z') }], deadline: new Date('2024-03-30T12:00:00Z'), createdAt: new Date('2024-03-01T12:00:00Z')
   },
   {
     id: '#4819', buyer: '0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a', seller: '0x9B8A7C6D5E4F3A2B1C0D9E8F7A6B5C4D3E2F1A0B', value: 5500, token: 'USDC', status: 'active', description: 'Custom ERC-721 collection with generative art engine',
-    milestones: [{ title: 'Art Generation Script', percentage: 25, status: 'completed', deadline: new Date() }, { title: 'Smart Contract Development', percentage: 35, status: 'active', deadline: new Date() }, { title: 'Frontend Minting Page', percentage: 25, status: 'pending', deadline: new Date() }, { title: 'Testing & Deployment', percentage: 15, status: 'pending', deadline: new Date() }], deadline: new Date(), createdAt: new Date()
+    milestones: [{ title: 'Art Generation Script', percentage: 25, status: 'completed', deadline: new Date('2024-04-05T12:00:00Z') }, { title: 'Smart Contract Development', percentage: 35, status: 'active', deadline: new Date('2024-04-25T12:00:00Z') }, { title: 'Frontend Minting Page', percentage: 25, status: 'pending', deadline: new Date('2024-05-10T12:00:00Z') }, { title: 'Testing & Deployment', percentage: 15, status: 'pending', deadline: new Date('2024-05-20T12:00:00Z') }], deadline: new Date('2024-05-30T12:00:00Z'), createdAt: new Date('2024-03-15T12:00:00Z')
   },
 ];
 
@@ -51,14 +51,14 @@ const INITIAL_DISPUTES: Dispute[] = [
       { id: 6, address: '0xJUR6...F2h3', reputation: 812, hasVoted: true, vote: 'buyer_wins', staked: 180 },
       { id: 7, address: '0xJUR7...G4i5', reputation: 667, hasVoted: false, staked: 100 },
     ],
-    votingDeadline: new Date(), createdAt: new Date(), timeline: []
+    votingDeadline: new Date('2024-04-15T12:00:00Z'), createdAt: new Date('2024-04-05T12:00:00Z'), timeline: []
   }
 ];
 
 export default function DashboardPage() {
   // ─── Live wallet from RainbowKit/MetaMask ──────────────────
   const { address: walletAddress, isConnected } = useWalletContext();
-
+  const [mounted, setMounted] = useState(false);
   const [deals, setDeals] = useState<Deal[]>(INITIAL_DEALS);
   const [disputes, setDisputes] = useState<Dispute[]>(INITIAL_DISPUTES);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
@@ -67,6 +67,10 @@ export default function DashboardPage() {
     reputationScore: 847, maxReputation: 1000, percentile: 12,
     nxfStaked: 500, nxfBalance: 847.5, reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
   });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [dealMessages, setDealMessages] = useState<DealMessage[]>([]);
@@ -196,6 +200,11 @@ export default function DashboardPage() {
         iconTheme: { primary: '#00E5C3', secondary: '#060612' },
         duration: 5000,
       });
+
+      // Optimistically update the UI status
+      setDeals(prev => prev.map(d =>
+        d.id === deal.id ? { ...d, status: 'confirmed' as const } : d
+      ));
     } catch (err) {
       console.error(err);
       toast.dismiss(toastId);
@@ -275,7 +284,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Table Header */}
-        <div className="hidden lg:grid grid-cols-[70px_1fr_100px_130px_130px_160px] px-6 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.15em] border-b border-white/5 lg:gap-x-4">
+        <div className="hidden lg:grid grid-cols-[100px_1fr_120px_160px_140px_180px] pl-6 pr-4 py-4 text-[10px] font-mono text-[#6060A0] uppercase tracking-[0.15em] border-b border-white/5 lg:gap-x-4">
           <span>Deal ID</span>
           <span>Counterparty</span>
           <span>Value</span>
@@ -294,7 +303,7 @@ export default function DashboardPage() {
           const dispute = getDisputeForDeal(deal.id);
           const isBuyer = isUserBuyer(deal);
           return (
-            <div key={deal.id} className="grid grid-cols-1 lg:grid-cols-[70px_1fr_100px_130px_130px_160px] px-6 py-5 items-center gap-4 lg:gap-x-4 border-b border-white/5 table-row-hover">
+            <div key={deal.id} className="grid grid-cols-1 lg:grid-cols-[100px_1fr_120px_160px_140px_180px] pl-6 pr-4 py-5 items-center gap-4 lg:gap-x-4 border-b border-white/5 table-row-hover">
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Deal ID</span>
                 <span className="font-mono text-sm text-brand-teal font-semibold">{deal.id}</span>
@@ -330,25 +339,28 @@ export default function DashboardPage() {
 
               <div className="flex justify-between items-center lg:block">
                 <span className="lg:hidden text-[10px] font-mono text-[#6060A0] uppercase">Action</span>
-                <div className="flex flex-wrap items-center lg:justify-end gap-2 text-right">
-                  {deal.status === 'pending_signatures' && (
-                    <button onClick={() => handleSignDeal(deal)}
-                      className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-brand-amber/10 border border-brand-amber/30 text-brand-amber hover:bg-brand-amber/20 transition-all disabled:opacity-50"
-                    >
-                      AWAITING COUNTERPARTY
-                    </button>
-                  )}
+                <div className="flex flex-wrap items-center lg:justify-end gap-2">
                   {deal.status === 'in_dispute' && dispute && (
-                    <Link href={`/disputes/${encodeURIComponent(dispute.id)}`} className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 transition-all">
-                      DISPUTE →
+                    <Link href={`/disputes/${encodeURIComponent(dispute.id)}`} className="text-[10px] font-sans font-bold px-4 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all whitespace-nowrap w-[140px] text-center">
+                      VIEW DISPUTE →
                     </Link>
                   )}
-                  <button
-                    onClick={() => setSelectedDeal(deal)}
-                    className="text-[10px] font-sans font-bold px-3 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all ml-1 min-w-[60px]"
-                  >
-                    VIEW
-                  </button>
+                  {deal.status === 'pending_signatures' && (
+                    <button 
+                      onClick={() => handleSignDeal(deal)}
+                      className="text-[10px] font-sans font-bold px-4 py-1.5 rounded-[7px] bg-transparent border border-brand-amber/30 text-brand-amber hover:bg-brand-amber/10 transition-all whitespace-nowrap w-[140px] text-center"
+                    >
+                      AWAITING SIGNATURE
+                    </button>
+                  )}
+                  {(deal.status === 'active' || deal.status === 'completed' || deal.status === 'confirmed') && (
+                    <button
+                      onClick={() => setSelectedDeal(deal)}
+                      className="text-[10px] font-sans font-bold px-4 py-1.5 rounded-[7px] bg-white/5 border border-white/10 text-[#B0B0E0] hover:bg-white/10 hover:text-white transition-all whitespace-nowrap w-[140px] text-center"
+                    >
+                      VIEW
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -447,7 +459,7 @@ export default function DashboardPage() {
             {combinedActivity.map((event, i) => (
               <div key={i} className="flex items-start gap-3 py-3 px-2 border-b border-white/[0.03] last:border-0 group hover:bg-white/[0.01] transition-colors">
                 <span className="font-mono text-[9px] text-[#5A5A7A] whitespace-nowrap mt-1 group-hover:text-brand-teal transition-colors">
-                  {formatTime(event.timestamp)}
+                  {mounted ? formatTime(event.timestamp) : '--:--:--'}
                 </span>
                 <span className={`font-mono text-[11px] leading-relaxed tracking-tight ${event.type === 'dispute' ? 'text-brand-pink' :
                     event.type === 'payment' ? 'text-brand-teal' :

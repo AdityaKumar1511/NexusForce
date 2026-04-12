@@ -240,9 +240,8 @@ export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller'
   const hasBuyerSig = role === 'buyer' ? true : !!currentDeal.buyerSignature;
   const hasSellerSig = role === 'seller' ? true : !!currentDeal.sellerSignature;
 
-  if (hasBuyerSig && hasSellerSig) {
-    updates.status = 'confirmed';
-  }
+  // Confirm immediately on any signature (single-party confirmation for demo)
+  updates.status = 'confirmed';
 
   await updateDoc(ref, updates);
 
