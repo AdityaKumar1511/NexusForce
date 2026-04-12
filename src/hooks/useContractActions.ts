@@ -10,6 +10,9 @@ import {
   createDispute as indexCreateDispute,
   submitJurorVote as indexSubmitJurorVote,
   saveDealSignature,
+  submitMilestone as indexSubmitMilestone,
+  approveMilestone as indexApproveMilestone,
+  rejectMilestone as indexRejectMilestone,
 } from '@/lib/firebaseService';
 import type { Deal, Dispute } from '@/lib/types';
 import { DOMAIN, TYPES } from '@/lib/eip712';
@@ -43,11 +46,19 @@ export function useCreateDeal() {
         // 1. Send on-chain transaction
         const dealId = `#${Math.floor(4800 + Math.random() * 200)}`;
 
+        const milestoneTitles = deal.milestones.map(m => m.title);
+        const milestonePercentages = deal.milestones.map(m => BigInt(m.percentage));
+
         const txHash = await writeContractAsync({
           address: NEXUS_ESCROW_ADDRESS,
           abi: NEXUS_ESCROW_ABI,
           functionName: 'createDeal',
-          args: [sellerAddress as `0x${string}`, dealId],
+          args: [
+            sellerAddress as `0x${string}`, 
+            dealId, 
+            milestoneTitles, 
+            milestonePercentages
+          ],
           value: parseEther(valueInMatic),
         });
 
@@ -78,10 +89,10 @@ export function useCreateDeal() {
   return { execute, ...state };
 }
 
-// ─── useCompleteDeal ─────────────────────────────────────────
-// Buyer confirms delivery on-chain, funds released to seller.
+// ─── useSubmitMilestone ─────────────────────────────────────
+// Seller submits proof of work for a milestone on-chain.
 
-export function useCompleteDeal() {
+export function useSubmitMilestone() {
   const { writeContractAsync } = useWriteContract();
   const [state, setState] = useState<ContractActionResult>({
     isPending: false,
@@ -91,32 +102,104 @@ export function useCompleteDeal() {
   });
 
   const execute = useCallback(
-    async (dealId: string) => {
+    async (dealId: string, index: number, proof: string) => {
       setState({ isPending: true, isSuccess: false, txHash: null, error: null });
 
       try {
-        // 1. Send on-chain transaction
         const txHash = await writeContractAsync({
           address: NEXUS_ESCROW_ADDRESS,
           abi: NEXUS_ESCROW_ABI,
-          functionName: 'completeDeal',
-          args: [dealId],
+          functionName: 'submitMilestone',
+          args: [dealId, BigInt(index), proof],
         });
 
-        // 2. Index to Firebase
-        await indexCompleteDeal(dealId);
+        await indexSubmitMilestone(dealId, index, proof);
 
         setState({ isPending: false, isSuccess: true, txHash, error: null });
         return txHash;
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
-        const isUserRejection = errorMessage.includes('User rejected') || errorMessage.includes('user rejected');
-        setState({
-          isPending: false,
-          isSuccess: false,
-          txHash: null,
-          error: isUserRejection ? 'Transaction rejected by user' : errorMessage,
+        setState({ isPending: false, isSuccess: false, txHash: null, error: errorMessage });
+        throw err;
+      }
+    },
+    [writeContractAsync]
+  );
+
+  return { execute, ...state };
+}
+
+// ─── useApproveMilestone ────────────────────────────────────
+// Buyer approves a milestone on-chain, triggering payment release.
+
+export function useApproveMilestone() {
+  const { writeContractAsync } = useWriteContract();
+  const [state, setState] = useState<ContractActionResult>({
+    isPending: false,
+    isSuccess: false,
+    txHash: null,
+    error: null,
+  });
+
+  const execute = useCallback(
+    async (dealId: string, index: number) => {
+      setState({ isPending: true, isSuccess: false, txHash: null, error: null });
+
+      try {
+        const txHash = await writeContractAsync({
+          address: NEXUS_ESCROW_ADDRESS,
+          abi: NEXUS_ESCROW_ABI,
+          functionName: 'approveMilestone',
+          args: [dealId, BigInt(index)],
         });
+
+        await indexApproveMilestone(dealId, index);
+
+        setState({ isPending: false, isSuccess: true, txHash, error: null });
+        return txHash;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+        setState({ isPending: false, isSuccess: false, txHash: null, error: errorMessage });
+        throw err;
+      }
+    },
+    [writeContractAsync]
+  );
+
+  return { execute, ...state };
+}
+
+// ─── useRejectMilestone ─────────────────────────────────────
+// Buyer requests revision/rejects a milestone on-chain.
+
+export function useRejectMilestone() {
+  const { writeContractAsync } = useWriteContract();
+  const [state, setState] = useState<ContractActionResult>({
+    isPending: false,
+    isSuccess: false,
+    txHash: null,
+    error: null,
+  });
+
+  const execute = useCallback(
+    async (dealId: string, index: number, reason: string) => {
+      setState({ isPending: true, isSuccess: false, txHash: null, error: null });
+
+      try {
+        const txHash = await writeContractAsync({
+          address: NEXUS_ESCROW_ADDRESS,
+          abi: NEXUS_ESCROW_ABI,
+          functionName: 'rejectMilestone',
+          args: [dealId, BigInt(index), reason],
+        });
+
+        await indexRejectMilestone(dealId, index, reason);
+
+        setState({ isPending: false, isSuccess: true, txHash, error: null });
+        return txHash;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+        setState({ isPending: false, isSuccess: false, txHash: null, error: errorMessage });
         throw err;
       }
     },

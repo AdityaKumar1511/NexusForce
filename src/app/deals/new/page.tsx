@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useSignDeal } from '@/hooks/useContractActions';
 import { useWalletContext } from '@/providers/WalletProvider';
 import { createDeal as indexCreateDeal } from '@/lib/firebaseService';
+import { createNotification } from '@/lib/notificationService';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
@@ -106,9 +107,30 @@ export default function CreateDealPage() {
       // 2. Sign the data (also saves signature to DB via hook)
       const signature = await signDealHook.execute(dealId, amount || '0', buyer, seller, role);
 
+      // 3. Trigger Notification
+      await createNotification({
+        recipient: walletAddress,
+        type: 'deal',
+        title: 'Proposal Sent',
+        message: 'You have proposed a new deal. Awaiting buyer confirmation.',
+        link: `/dashboard?deal=${dealId}`,
+      });
+
       clearTimeout(hardTimeout);
       toast.dismiss(toastId);
       
+      toast.success('Proposal Signed & Transaction Sent to Blockchain.', {
+        style: { 
+          background: 'rgba(255, 255, 255, 0.04)', 
+          color: '#00E5C3', 
+          border: '1px solid rgba(255, 255, 255, 0.08)', 
+          backdropFilter: 'blur(20px)',
+          fontFamily: 'Space Grotesk, sans-serif', 
+          fontSize: '13px' 
+        },
+        iconTheme: { primary: '#00E5C3', secondary: '#060612' },
+      });
+
       setTxHash(signature);
       setCreatedDealId(dealId);
       setIsSuccess(true); 
@@ -116,7 +138,7 @@ export default function CreateDealPage() {
 
       setTimeout(() => {
         router.push('/dashboard');
-      }, 3000);
+      }, 4000);
     } catch (err) {
       clearTimeout(hardTimeout);
       console.error(err);
@@ -424,7 +446,7 @@ export default function CreateDealPage() {
                       : 'bg-gradient-to-r from-brand-teal to-[#8B85FF] text-[#060612] hover:scale-[1.02] active:scale-[0.98] shadow-brand-teal/20 disabled:opacity-50 disabled:shadow-none'
                   }`}
                 >
-                  {isSuccess ? 'DEAL SENT ✓' : isSubmitting ? 'PROPOSING DEAL...' : 'SIGN & PROPOSE DEAL'}
+                  {isSuccess ? 'PROPOSAL SENT ✓' : isSubmitting ? 'PROCESSING...' : 'SIGN & PROPOSE DEAL'}
                 </button>
               </div>
             )}
