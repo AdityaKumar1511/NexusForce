@@ -91,22 +91,4 @@ function calculateTimeLeft(targetDate: Date) {
   };
 }
 
-// Simulated wallet state
-export function useWallet() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState<string | null>(null);
 
-  const connect = useCallback(() => {
-    setIsConnected(true);
-    setAddress('0x3F4a8b2C1D9e7F6A5B3c2D1E0F9A8B7C6D5E4F3a');
-  }, []);
-
-  const disconnect = useCallback(() => {
-    setIsConnected(false);
-    setAddress(null);
-  }, []);
-
-  const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : null;
-
-  return { isConnected, address, shortAddress, connect, disconnect };
-}

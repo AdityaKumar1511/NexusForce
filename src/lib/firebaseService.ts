@@ -13,7 +13,8 @@ import {
   Timestamp,
   increment,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, isMock } from './firebase';
+import * as mockDb from './mockDb';
 import type {
   Deal,
   Milestone,
@@ -25,16 +26,15 @@ import type {
   GraphNode,
   GraphLink,
   DealMessage,
-  Notification,
 } from './types';
 import { createNotification } from './notificationService';
 
 // ─── Collection References ───────────────────────────────────────
-const dealsCol = collection(db, 'deals');
-const disputesCol = collection(db, 'disputes');
-const proposalsCol = collection(db, 'proposals');
-const activityCol = collection(db, 'activity');
-const dealMessagesCol = collection(db, 'dealMessages');
+const dealsCol = db ? collection(db, 'deals') : null;
+const disputesCol = db ? collection(db, 'disputes') : null;
+const proposalsCol = db ? collection(db, 'proposals') : null;
+const activityCol = db ? collection(db, 'activity') : null;
+const dealMessagesCol = db ? collection(db, 'dealMessages') : null;
 
 // ─── Helpers: Firestore ↔ App date conversion ───────────────────
 function toDate(val: unknown): Date {
@@ -163,16 +163,17 @@ function parseDealMessage(id: string, data: Record<string, unknown>): DealMessag
 }
 
 // ─── DEALS ───────────────────────────────────────────────────────
-// NOTE: Mutation functions (createDeal, completeDeal, etc.) are now
-// INDEXER-ONLY — called by wagmi hooks in useContractActions.ts
-// after a successful on-chain transaction. Never call them directly from UI.
 
 export async function getDeals(): Promise<Deal[]> {
+  if (isMock) return mockDb.getDeals();
+  if (!dealsCol) return [];
   const snap = await getDocs(dealsCol);
   return snap.docs.map(d => parseDeal(d.id, d.data() as Record<string, unknown>));
 }
 
 export async function getDealById(dealId: string): Promise<Deal | null> {
+  if (isMock) return mockDb.getDealById(dealId);
+  if (!db) return null;
   const ref = doc(db, 'deals', dealId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
@@ -180,13 +181,14 @@ export async function getDealById(dealId: string): Promise<Deal | null> {
 }
 
 export async function createDeal(deal: Omit<Deal, 'id'> & { id?: string }): Promise<string> {
+  if (isMock) return mockDb.createDeal(deal);
+  if (!db) return '';
   const dealId = deal.id || `#${Math.floor(4800 + Math.random() * 200)}`;
   const dealData = { ...deal };
   delete dealData.id;
   const ref = doc(db, 'deals', dealId);
   await setDoc(ref, serializeDates(dealData as unknown as Record<string, unknown>));
 
-  // Add activity event
   await addActivityEvent({
     type: 'deal',
     message: `DEAL ${dealId} · New deal created — $${deal.value.toLocaleString()} ${deal.token} escrowed`,
@@ -194,10 +196,8 @@ export async function createDeal(deal: Omit<Deal, 'id'> & { id?: string }): Prom
     timestamp: new Date(),
   });
 
-  // Update global stats
   await updateGlobalStats({ totalEscrowed: deal.value, dealsCreated: 1 });
 
-  // Notify seller
   await createNotification({
     recipient: deal.seller,
     type: 'deal',
@@ -210,6 +210,8 @@ export async function createDeal(deal: Omit<Deal, 'id'> & { id?: string }): Prom
 }
 
 export async function updateDealStatus(dealId: string, status: Deal['status']): Promise<void> {
+  if (isMock) return mockDb.updateDealStatus(dealId, status);
+  if (!db) return;
   const ref = doc(db, 'deals', dealId);
   await updateDoc(ref, { status });
 
@@ -222,6 +224,8 @@ export async function updateDealStatus(dealId: string, status: Deal['status']): 
 }
 
 export async function completeDeal(dealId: string): Promise<void> {
+  if (isMock) return mockDb.completeDeal(dealId);
+  if (!db) return;
   const ref = doc(db, 'deals', dealId);
   const txHash = `0x${Math.random().toString(16).slice(2, 18)}${Math.random().toString(16).slice(2, 18)}`;
   await updateDoc(ref, { status: 'completed', txHash });
@@ -235,13 +239,25 @@ export async function completeDeal(dealId: string): Promise<void> {
 }
 
 export function subscribeToDeals(callback: (deals: Deal[]) => void): () => void {
-  return onSnapshot(dealsCol, snap => {
-    const deals = snap.docs.map(d => parseDeal(d.id, d.data() as Record<string, unknown>));
-    callback(deals);
+  if (isMock) {
+    callback(mockDb.getDeals());
+    return mockDb.subscribe(() => callback(mockDb.getDeals()));
+  }
+  if (!dealsCol) return () => {};
+  return onSnapshot(dealsCol, {
+    next: snap => {
+      const deals = snap.docs.map(d => parseDeal(d.id, d.data() as Record<string, unknown>));
+      callback(deals);
+    },
+    error: err => {
+      console.warn('Firestore deals subscription error:', err);
+    }
   });
 }
 
 export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller', signature: string): Promise<void> {
+  if (isMock) return mockDb.saveDealSignature(dealId, role, signature);
+  if (!db) return;
   const ref = doc(db, 'deals', dealId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
@@ -251,11 +267,10 @@ export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller'
   if (role === 'buyer') updates.buyerSignature = signature;
   if (role === 'seller') updates.sellerSignature = signature;
 
+  // Only mark confirmed once BOTH parties have signed
   const hasBuyerSig = role === 'buyer' ? true : !!currentDeal.buyerSignature;
   const hasSellerSig = role === 'seller' ? true : !!currentDeal.sellerSignature;
-
-  // Confirm immediately on any signature (single-party confirmation for demo)
-  updates.status = 'confirmed';
+  updates.status = hasBuyerSig && hasSellerSig ? 'confirmed' : 'pending_signatures';
 
   await updateDoc(ref, updates);
 
@@ -266,7 +281,6 @@ export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller'
     timestamp: new Date(),
   });
 
-  // Notify counterparty
   const recipient = role === 'buyer' ? currentDeal.seller : currentDeal.buyer;
   await createNotification({
     recipient,
@@ -280,6 +294,8 @@ export async function saveDealSignature(dealId: string, role: 'buyer' | 'seller'
 // ─── MILESTONES ──────────────────────────────────────────────────
 
 export async function submitMilestone(dealId: string, index: number, proof: string): Promise<void> {
+  if (isMock) return mockDb.submitMilestone(dealId, index, proof);
+  if (!db) return;
   const ref = doc(db, 'deals', dealId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
@@ -301,7 +317,6 @@ export async function submitMilestone(dealId: string, index: number, proof: stri
     timestamp: new Date(),
   });
 
-  // Notify buyer
   await createNotification({
     recipient: deal.buyer,
     type: 'milestone',
@@ -312,6 +327,8 @@ export async function submitMilestone(dealId: string, index: number, proof: stri
 }
 
 export async function approveMilestone(dealId: string, index: number): Promise<void> {
+  if (isMock) return mockDb.approveMilestone(dealId, index);
+  if (!db) return;
   const ref = doc(db, 'deals', dealId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
@@ -322,7 +339,6 @@ export async function approveMilestone(dealId: string, index: number): Promise<v
     milestones[index].status = 'completed';
   }
 
-  // Check if all completed
   const allDone = milestones.every(m => m.status === 'completed');
   const updates: any = { milestones };
   if (allDone) updates.status = 'completed';
@@ -336,7 +352,6 @@ export async function approveMilestone(dealId: string, index: number): Promise<v
     timestamp: new Date(),
   });
 
-  // Notify seller
   await createNotification({
     recipient: deal.seller,
     type: 'milestone',
@@ -347,6 +362,8 @@ export async function approveMilestone(dealId: string, index: number): Promise<v
 }
 
 export async function rejectMilestone(dealId: string, index: number, reason: string): Promise<void> {
+  if (isMock) return mockDb.rejectMilestone(dealId, index, reason);
+  if (!db) return;
   const ref = doc(db, 'deals', dealId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
@@ -367,7 +384,6 @@ export async function rejectMilestone(dealId: string, index: number, reason: str
     timestamp: new Date(),
   });
 
-  // Notify seller
   await createNotification({
     recipient: deal.seller,
     type: 'milestone',
@@ -380,18 +396,25 @@ export async function rejectMilestone(dealId: string, index: number, reason: str
 // ─── DISPUTES ────────────────────────────────────────────────────
 
 export async function getDisputes(): Promise<Dispute[]> {
+  if (isMock) return mockDb.getDisputes();
+  if (!disputesCol) return [];
   const snap = await getDocs(disputesCol);
   return snap.docs.map(d => parseDispute(d.id, d.data() as Record<string, unknown>));
 }
 
 export async function getDisputeById(disputeId: string): Promise<Dispute | null> {
-  const snap = await getDocs(query(disputesCol));
-  const found = snap.docs.find(d => d.id === disputeId || (d.data() as Record<string, unknown>).id === disputeId);
-  if (!found) return null;
-  return parseDispute(found.id, found.data() as Record<string, unknown>);
+  if (isMock) return mockDb.getDisputeById(disputeId);
+  if (!db) return null;
+  // Direct doc lookup — no need to fetch the entire collection
+  const ref = doc(db, 'disputes', disputeId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return parseDispute(snap.id, snap.data() as Record<string, unknown>);
 }
 
 export async function createDispute(dispute: Omit<Dispute, 'id'>): Promise<string> {
+  if (isMock) return mockDb.createDispute(dispute);
+  if (!db) return '';
   const disputeId = `#${Math.floor(1200 + Math.random() * 100)}`;
   const ref = doc(db, 'disputes', disputeId);
   await setDoc(ref, {
@@ -399,7 +422,6 @@ export async function createDispute(dispute: Omit<Dispute, 'id'>): Promise<strin
     id: disputeId,
   });
 
-  // Update linked deal status
   if (dispute.dealId) {
     await updateDealStatus(dispute.dealId, 'in_dispute');
   }
@@ -412,7 +434,6 @@ export async function createDispute(dispute: Omit<Dispute, 'id'>): Promise<strin
     timestamp: new Date(),
   });
 
-  // Notify parties
   const parties = [dispute.buyer, dispute.seller];
   for (const recipient of parties) {
     await createNotification({
@@ -424,7 +445,6 @@ export async function createDispute(dispute: Omit<Dispute, 'id'>): Promise<strin
     });
   }
 
-  // Notify jurors
   if (dispute.jurors) {
     for (const juror of dispute.jurors) {
       await createNotification({
@@ -445,6 +465,8 @@ export async function submitJurorVote(
   jurorIndex: number,
   vote: 'buyer_wins' | 'seller_wins' | 'split'
 ): Promise<void> {
+  if (isMock) return mockDb.submitJurorVote(disputeId, jurorIndex, vote);
+  if (!db) return;
   const dispute = await getDisputeById(disputeId);
   if (!dispute) return;
 
@@ -468,6 +490,8 @@ export async function uploadEvidenceFile(
   disputeId: string,
   file: { name: string; size: string; type: string; cid: string; uploadedBy: 'buyer' | 'seller' }
 ): Promise<void> {
+  if (isMock) return mockDb.uploadEvidenceFile(disputeId, file);
+  if (!db) return;
   const dispute = await getDisputeById(disputeId);
   if (!dispute) return;
 
@@ -490,20 +514,34 @@ export async function uploadEvidenceFile(
 }
 
 export function subscribeToDisputes(callback: (disputes: Dispute[]) => void): () => void {
-  return onSnapshot(disputesCol, snap => {
-    const disputes = snap.docs.map(d => parseDispute(d.id, d.data() as Record<string, unknown>));
-    callback(disputes);
+  if (isMock) {
+    callback(mockDb.getDisputes());
+    return mockDb.subscribe(() => callback(mockDb.getDisputes()));
+  }
+  if (!disputesCol) return () => {};
+  return onSnapshot(disputesCol, {
+    next: snap => {
+      const disputes = snap.docs.map(d => parseDispute(d.id, d.data() as Record<string, unknown>));
+      callback(disputes);
+    },
+    error: err => {
+      console.warn('Firestore disputes subscription error:', err);
+    }
   });
 }
 
 // ─── PROPOSALS ───────────────────────────────────────────────────
 
 export async function getProposals(): Promise<Proposal[]> {
+  if (isMock) return mockDb.getProposals();
+  if (!proposalsCol) return [];
   const snap = await getDocs(proposalsCol);
   return snap.docs.map(d => parseProposal(d.id, d.data() as Record<string, unknown>));
 }
 
 export async function voteOnProposal(proposalId: string, vote: 'for' | 'against', nxfAmount: number = 50000): Promise<void> {
+  if (isMock) return mockDb.voteOnProposal(proposalId, vote, nxfAmount);
+  if (!db) return;
   const ref = doc(db, 'proposals', proposalId);
   if (vote === 'for') {
     await updateDoc(ref, {
@@ -519,41 +557,69 @@ export async function voteOnProposal(proposalId: string, vote: 'for' | 'against'
 }
 
 export function subscribeToProposals(callback: (proposals: Proposal[]) => void): () => void {
-  return onSnapshot(proposalsCol, snap => {
-    const proposals = snap.docs.map(d => parseProposal(d.id, d.data() as Record<string, unknown>));
-    callback(proposals);
+  if (isMock) {
+    callback(mockDb.getProposals());
+    return mockDb.subscribe(() => callback(mockDb.getProposals()));
+  }
+  if (!proposalsCol) return () => {};
+  return onSnapshot(proposalsCol, {
+    next: snap => {
+      const proposals = snap.docs.map(d => parseProposal(d.id, d.data() as Record<string, unknown>));
+      callback(proposals);
+    },
+    error: err => {
+      console.warn('Firestore proposals subscription error:', err);
+    }
   });
 }
 
 // ─── ACTIVITY FEED ───────────────────────────────────────────────
 
 export async function getActivityFeed(limitCount: number = 20): Promise<ActivityEvent[]> {
+  if (isMock) return mockDb.getActivityFeed(limitCount);
+  if (!activityCol) return [];
   const q = query(activityCol, orderBy('timestamp', 'desc'), limit(limitCount));
   const snap = await getDocs(q);
   return snap.docs.map(d => parseActivity(d.data() as Record<string, unknown>));
 }
 
 export async function addActivityEvent(event: ActivityEvent): Promise<void> {
+  if (isMock) return mockDb.addActivityEvent(event);
+  if (!activityCol) return;
   await addDoc(activityCol, serializeDates(event as unknown as Record<string, unknown>));
 }
 
 export function subscribeToActivity(callback: (events: ActivityEvent[]) => void, limitCount: number = 20): () => void {
+  if (isMock) {
+    callback(mockDb.getActivityFeed(limitCount));
+    return mockDb.subscribe(() => callback(mockDb.getActivityFeed(limitCount)));
+  }
+  if (!activityCol) return () => {};
   const q = query(activityCol, orderBy('timestamp', 'desc'), limit(limitCount));
-  return onSnapshot(q, snap => {
-    const events = snap.docs.map(d => parseActivity(d.data() as Record<string, unknown>));
-    callback(events);
+  return onSnapshot(q, {
+    next: snap => {
+      const events = snap.docs.map(d => parseActivity(d.data() as Record<string, unknown>));
+      callback(events);
+    },
+    error: err => {
+      console.warn('Firestore activity subscription error:', err);
+    }
   });
 }
 
 // ─── GLOBAL STATS ────────────────────────────────────────────────
 
 export async function hasSeeded(): Promise<boolean> {
+  if (isMock) return true;
+  if (!db) return false;
   const ref = doc(db, 'proposals', 'NXF-009');
   const snap = await getDoc(ref);
   return snap.exists();
 }
 
 export async function getGlobalStats(): Promise<GlobalStats> {
+  if (isMock) return mockDb.getGlobalStats();
+  if (!db) return { totalEscrowed: 4200000, dealsCompleted: 12847, autoResolutionRate: 99.2, avgReleaseTime: '<2 MIN' };
   const ref = doc(db, 'config', 'globalStats');
   const snap = await getDoc(ref);
   if (!snap.exists()) {
@@ -569,6 +635,8 @@ export async function getGlobalStats(): Promise<GlobalStats> {
 }
 
 export async function updateGlobalStats(updates: { totalEscrowed?: number; dealsCreated?: number }): Promise<void> {
+  if (isMock) return mockDb.updateGlobalStats(updates);
+  if (!db) return;
   const ref = doc(db, 'config', 'globalStats');
   const updateObj: Record<string, unknown> = {};
   if (updates.totalEscrowed) updateObj.totalEscrowed = increment(updates.totalEscrowed);
@@ -576,7 +644,6 @@ export async function updateGlobalStats(updates: { totalEscrowed?: number; deals
   try {
     await updateDoc(ref, updateObj);
   } catch {
-    // Doc may not exist yet — create it
     const current = await getGlobalStats();
     await setDoc(ref, {
       totalEscrowed: (current.totalEscrowed || 0) + (updates.totalEscrowed || 0),
@@ -588,37 +655,64 @@ export async function updateGlobalStats(updates: { totalEscrowed?: number; deals
 }
 
 export function subscribeToGlobalStats(callback: (stats: GlobalStats) => void): () => void {
+  if (isMock) {
+    callback(mockDb.getGlobalStats());
+    return mockDb.subscribe(() => callback(mockDb.getGlobalStats()));
+  }
+  if (!db) return () => {};
   const ref = doc(db, 'config', 'globalStats');
-  return onSnapshot(ref, snap => {
-    if (!snap.exists()) {
-      callback({ totalEscrowed: 4200000, dealsCompleted: 12847, autoResolutionRate: 99.2, avgReleaseTime: '<2 MIN' });
-      return;
+  return onSnapshot(ref, {
+    next: snap => {
+      if (!snap.exists()) {
+        callback({ totalEscrowed: 4200000, dealsCompleted: 12847, autoResolutionRate: 99.2, avgReleaseTime: '<2 MIN' });
+        return;
+      }
+      const data = snap.data();
+      callback({
+        totalEscrowed: data.totalEscrowed || 0,
+        dealsCompleted: data.dealsCompleted || 0,
+        autoResolutionRate: data.autoResolutionRate || 0,
+        avgReleaseTime: data.avgReleaseTime || '<2 MIN',
+      });
+    },
+    error: err => {
+      console.warn('Firestore global stats subscription error:', err);
     }
-    const data = snap.data();
-    callback({
-      totalEscrowed: data.totalEscrowed || 0,
-      dealsCompleted: data.dealsCompleted || 0,
-      autoResolutionRate: data.autoResolutionRate || 0,
-      avgReleaseTime: data.avgReleaseTime || '<2 MIN',
-    });
   });
 }
 
 // ─── JUROR STATS ─────────────────────────────────────────────────
 
 export async function updateJurorStats(updates: Partial<JurorStats>, walletAddress?: string): Promise<void> {
+  if (isMock) return mockDb.updateJurorStats(updates, walletAddress);
+  if (!db) return;
   const id = walletAddress || 'default';
   const ref = doc(db, 'jurorStats', id);
-  // Using merge: true prevents the need to fetch first, and avoids full document overwrites
   await setDoc(ref, updates, { merge: true });
 }
 
 export async function getJurorStats(walletAddress?: string): Promise<JurorStats> {
+  if (isMock) return mockDb.getJurorStats(walletAddress);
+  if (!db) {
+    return {
+      casesHandled: 24,
+      majorityVotes: 21,
+      accuracyRate: 87.5,
+      totalEarned: 124.5,
+      reputationScore: 847,
+      maxReputation: 1000,
+      percentile: 12,
+      nxfStaked: 500,
+      nxfBalance: 847.5,
+      reputationHistory: [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
+      delegatedTo: null,
+    };
+  }
   const id = walletAddress || 'default';
   const ref = doc(db, 'jurorStats', id);
   const snap = await getDoc(ref);
   const data = snap.exists() ? snap.data() : {};
-  
+
   return {
     casesHandled: data.casesHandled ?? 24,
     majorityVotes: data.majorityVotes ?? 21,
@@ -635,23 +729,33 @@ export async function getJurorStats(walletAddress?: string): Promise<JurorStats>
 }
 
 export function subscribeToJurorStats(callback: (stats: JurorStats) => void, walletAddress?: string): () => void {
+  if (isMock) {
+    callback(mockDb.getJurorStats(walletAddress));
+    return mockDb.subscribe(() => callback(mockDb.getJurorStats(walletAddress)));
+  }
+  if (!db) return () => {};
   const id = walletAddress || 'default';
   const ref = doc(db, 'jurorStats', id);
-  return onSnapshot(ref, snap => {
-    const data = snap.exists() ? snap.data() : {};
-    callback({
-      casesHandled: data.casesHandled ?? 24,
-      majorityVotes: data.majorityVotes ?? 21,
-      accuracyRate: data.accuracyRate ?? 87.5,
-      totalEarned: data.totalEarned ?? 124.5,
-      reputationScore: data.reputationScore ?? 847,
-      maxReputation: data.maxReputation ?? 1000,
-      percentile: data.percentile ?? 12,
-      nxfStaked: data.nxfStaked ?? 500,
-      nxfBalance: data.nxfBalance ?? 847.5,
-      reputationHistory: data.reputationHistory ?? [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
-      delegatedTo: data.delegatedTo ?? null,
-    });
+  return onSnapshot(ref, {
+    next: snap => {
+      const data = snap.exists() ? snap.data() : {};
+      callback({
+        casesHandled: data.casesHandled ?? 24,
+        majorityVotes: data.majorityVotes ?? 21,
+        accuracyRate: data.accuracyRate ?? 87.5,
+        totalEarned: data.totalEarned ?? 124.5,
+        reputationScore: data.reputationScore ?? 847,
+        maxReputation: data.maxReputation ?? 1000,
+        percentile: data.percentile ?? 12,
+        nxfStaked: data.nxfStaked ?? 500,
+        nxfBalance: data.nxfBalance ?? 847.5,
+        reputationHistory: data.reputationHistory ?? [720, 735, 742, 760, 775, 790, 780, 795, 810, 822, 835, 840, 847],
+        delegatedTo: data.delegatedTo ?? null,
+      });
+    },
+    error: err => {
+      console.warn('Firestore juror stats subscription error:', err);
+    }
   });
 }
 
@@ -673,7 +777,6 @@ export function buildGraphData(deals: Deal[], disputes: Dispute[]): { nodes: Gra
     const disputeNodeId = `d${i + 1}`;
     nodes.push({ id: disputeNodeId, type: 'dispute', label: `DISPUTE ${dispute.id}` });
 
-    // Link dispute to matching deal buyer/seller nodes
     const dealIndex = deals.findIndex(d => d.id === dispute.dealId);
     if (dealIndex >= 0) {
       links.push({ source: `b${dealIndex + 1}`, target: disputeNodeId });
@@ -701,6 +804,8 @@ export function buildTickerEvents(activity: ActivityEvent[]): string[] {
 // ─── DEAL MESSAGES (CHAT LAYER) ──────────────────────────────────
 
 export async function sendDealMessage(dealId: string, sender: string, text: string): Promise<string> {
+  if (isMock) return mockDb.sendDealMessage(dealId, sender, text);
+  if (!dealMessagesCol) return '';
   const messageData = {
     dealId,
     sender,
@@ -712,10 +817,20 @@ export async function sendDealMessage(dealId: string, sender: string, text: stri
 }
 
 export function subscribeToDealMessages(dealId: string, callback: (messages: DealMessage[]) => void): () => void {
+  if (isMock) {
+    callback(mockDb.getDealMessages(dealId));
+    return mockDb.subscribe(() => callback(mockDb.getDealMessages(dealId)));
+  }
+  if (!dealMessagesCol) return () => {};
   const q = query(dealMessagesCol, orderBy('timestamp', 'asc'));
-  return onSnapshot(q, snap => {
-    const allMessages = snap.docs.map(d => parseDealMessage(d.id, d.data() as Record<string, unknown>));
-    const dealMessages = allMessages.filter(m => m.dealId === dealId);
-    callback(dealMessages);
+  return onSnapshot(q, {
+    next: snap => {
+      const allMessages = snap.docs.map(d => parseDealMessage(d.id, d.data() as Record<string, unknown>));
+      const dealMessages = allMessages.filter(m => m.dealId === dealId);
+      callback(dealMessages);
+    },
+    error: err => {
+      console.warn('Firestore deal messages subscription error:', err);
+    }
   });
 }

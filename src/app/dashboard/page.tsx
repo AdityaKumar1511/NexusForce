@@ -165,14 +165,14 @@ function DashboardContent() {
 
   useEffect(() => {
     const unsub1 = subscribeToDeals((d) => {
-      const all = [...d, ...INITIAL_DEALS];
+      // Live data (d) appended after fallbacks so it overwrites in the Map dedup
+      const all = [...INITIAL_DEALS, ...d];
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
-      // Sort to put newest first (optional, but good)
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setDeals(unique);
     });
     const unsub2 = subscribeToDisputes((d) => {
-      const all = [...d, ...INITIAL_DISPUTES];
+      const all = [...INITIAL_DISPUTES, ...d];
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       unique.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setDisputes(unique);
@@ -269,8 +269,6 @@ function DashboardContent() {
           fontSize: '13px'
         },
       });
-    } finally {
-
     }
   };
 

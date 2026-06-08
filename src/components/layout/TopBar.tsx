@@ -60,7 +60,7 @@ export default function TopBar({ onOpenSidebar }: TopBarProps) {
 
         <div className="flex lg:hidden items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#060612] border border-white/10 flex items-center justify-center overflow-hidden">
-            <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
+            <img src="/logo.svg" alt="Logo" className="w-6 h-6 object-contain" />
           </div>
           <span className="font-sans text-[11px] font-black tracking-widest text-[#E0E0FF] uppercase">NEXUSFORCE</span>
         </div>

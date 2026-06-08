@@ -59,7 +59,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-[#060612] border border-white/10 flex items-center justify-center overflow-hidden">
-              <img src="/logo.png" alt="NexusForce Logo" className="w-7 h-7 object-contain" />
+              <img src="/logo.svg" alt="NexusForce Logo" className="w-7 h-7 object-contain" />
             </div>
             <span className="font-sans text-sm font-bold tracking-widest text-[#E0E0FF] hidden sm:block uppercase tracking-[0.2em]">NEXUSFORCE</span>
           </Link>

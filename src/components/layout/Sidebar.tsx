@@ -56,7 +56,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <div className="absolute -inset-1 bg-gradient-to-r from-brand-purple to-brand-teal rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
               <div className="relative w-12 h-12 rounded-xl bg-[#060612] border border-white/10 flex items-center justify-center overflow-hidden shadow-2xl">
                 <img 
-                  src="/logo.png" 
+                  src="/logo.svg" 
                   alt="NexusForce Logo" 
                   className="w-10 h-10 object-contain hover:scale-110 transition-transform duration-500"
                 />
